@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kankarei R&amp;R Gantt</title>
+<meta name="description" content="Live Gantt dashboard for the Kankarei R&R process, synced from Google Sheets.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* =========================================================================
+   DESIGN TOKENS  (light theme only)
+   ========================================================================= */
+:root{
+  --bg:#f3f5fb;
+  --ink:#1e1b4b;            /* deep indigo text */
+  --ink-2:#475569;
+  --ink-3:#94a3b8;
+  --line:#e7eaf3;
+  --line-2:#f0f2f8;
+  --card:#ffffff;
+  --brand-a:#4f46e5; --brand-b:#7c3aed; --brand-c:#db2777;
+  --g-brand:linear-gradient(120deg,#4f46e5 0%,#7c3aed 48%,#db2777 100%);
+  --g-done:linear-gradient(90deg,#10b981,#14b8a6);
+  --g-prog:linear-gradient(90deg,#3b82f6,#6366f1);
+  --g-todo:linear-gradient(90deg,#a3b1c6,#b4b9f5);
+  --g-late:linear-gradient(90deg,#f43f5e,#fb923c);
+  --g-hold:linear-gradient(90deg,#f59e0b,#facc15);
+  --c-done:#10b981; --c-prog:#4f6cf0; --c-todo:#94a3b8; --c-late:#f43f5e; --c-hold:#f59e0b;
+  --p1:linear-gradient(90deg,#6366f1,#8b5cf6);
+  --p2:linear-gradient(90deg,#0ea5e9,#3b82f6);
+  --p3:linear-gradient(90deg,#f59e0b,#f97316);
+  --p4:linear-gradient(90deg,#ec4899,#a855f7);
+  --p5:linear-gradient(90deg,#14b8a6,#22c55e);
+  --shadow-1:0 1px 2px rgba(30,27,75,.04),0 4px 14px -4px rgba(30,27,75,.08);
+  --shadow-2:0 2px 4px rgba(30,27,75,.04),0 18px 40px -12px rgba(79,70,229,.22);
+  --radius:20px;
+  --left:470px;             /* width of the task grid column */
+  --row:42px;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:'Plus Jakarta Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  color:var(--ink);font-size:14px;line-height:1.45;
+  background:
+    radial-gradient(900px 500px at 0% -10%,rgba(124,58,237,.10),transparent 60%),
+    radial-gradient(800px 500px at 100% 0%,rgba(219,39,119,.08),transparent 60%),
+    radial-gradient(900px 700px at 50% 110%,rgba(20,184,166,.08),transparent 60%),
+    var(--bg);
+  background-attachment:fixed;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{max-width:1680px;margin:0 auto;padding:20px 24px 48px}
+
+/* =========================================================================
+   HERO HEADER
+   ========================================================================= */
+.hero{
+  position:relative;overflow:hidden;border-radius:26px;padding:26px 30px;color:#fff;
+  background:var(--g-brand);box-shadow:0 24px 60px -24px rgba(79,70,229,.55);
+  display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between;
+}
+.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;filter:blur(2px);pointer-events:none}
+.hero::before{width:420px;height:420px;right:-120px;top:-220px;background:radial-gradient(circle,rgba(255,255,255,.28),transparent 65%)}
+.hero::after{width:300px;height:300px;left:30%;bottom:-200px;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 65%)}
+.hero .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;font-weight:700}
+.hero h1{margin:6px 0 4px;font-size:clamp(22px,3vw,32px);font-weight:800;letter-spacing:-.02em}
+.hero p{margin:0;opacity:.9;max-width:720px}
+.sync{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;
+  background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(8px);
+  font-size:12.5px;font-weight:600;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 0 rgba(74,222,128,.7);animation:pulse 2s infinite}
+.dot.warn{background:#fbbf24;animation:none}
+.dot.err{background:#f87171;animation:none}
+.dot.demo{background:#e0e7ff;animation:none}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(74,222,128,.7)}70%{box-shadow:0 0 0 9px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
+.btn-glass{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.2);color:#fff;border-radius:999px;
+  padding:8px 14px;font-weight:700;font-size:12.5px;display:inline-flex;gap:6px;align-items:center;transition:.2s}
+.btn-glass:hover{background:rgba(255,255,255,.32);transform:translateY(-1px)}
+.btn-glass svg{width:14px;height:14px}
+.spin svg{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.demo-note{position:relative;z-index:1;width:100%;font-size:12.5px;background:rgba(255,255,255,.14);border:1px dashed rgba(255,255,255,.45);
+  padding:8px 12px;border-radius:12px;display:none}
+.demo-note code{font-family:var(--mono);font-size:11.5px;background:rgba(255,255,255,.2);padding:1px 6px;border-radius:6px}
+
+/* =========================================================================
+   KPI CARDS (3D tilt)
+   ========================================================================= */
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin:20px 0 16px;perspective:900px}
+.kpi{
+  position:relative;background:var(--card);border-radius:var(--radius);padding:18px 18px 16px;
+  box-shadow:var(--shadow-1);border:1px solid rgba(255,255,255,.9);
+  transform-style:preserve-3d;transition:transform .25s ease,box-shadow .25s ease;overflow:hidden;
+  animation:rise .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--k)*70ms);
+}
+.kpi:hover{box-shadow:var(--shadow-2)}
+.kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--accent)}
+.kpi::after{content:"";position:absolute;width:140px;height:140px;right:-50px;bottom:-60px;border-radius:50%;background:var(--accent);opacity:.08}
+.kpi .k-top{display:flex;align-items:center;justify-content:space-between;transform:translateZ(20px)}
+.kpi .k-label{font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
+.kpi .k-icon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--accent);color:#fff;
+  box-shadow:0 8px 16px -6px var(--shadow-c,rgba(79,70,229,.5))}
+.kpi .k-icon svg{width:18px;height:18px}
+.kpi .k-val{font-size:32px;font-weight:800;letter-spacing:-.03em;margin-top:10px;transform:translateZ(30px)}
+.kpi .k-sub{font-size:12px;color:var(--ink-3);font-weight:600;transform:translateZ(10px)}
+.kpi.ring{display:flex;align-items:center;gap:14px}
+.kpi.ring .k-body{flex:1;min-width:0}
+.ringsvg{width:78px;height:78px;flex:none;transform:translateZ(30px)}
+.ringsvg circle{fill:none;stroke-width:9}
+.ringsvg .track{stroke:#eef0f8}
+.ringsvg .val{stroke:url(#ringGrad);stroke-linecap:round;transition:stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1)}
+.ringsvg text{font-weight:800;font-size:17px;fill:var(--ink)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* Phase progress strip */
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:16px}
+.phase{background:var(--card);border-radius:16px;padding:12px 14px;box-shadow:var(--shadow-1);cursor:pointer;transition:.2s;border:1px solid transparent}
+.phase:hover{transform:translateY(-2px);box-shadow:var(--shadow-2)}
+.phase.on{border-color:#c7d2fe;background:linear-gradient(180deg,#fff,#f5f6ff)}
+.phase .ph-top{display:flex;justify-content:space-between;gap:8px;font-weight:700;font-size:13px}
+.phase .ph-top span:last-child{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.phase .ph-bar{height:8px;border-radius:99px;background:#eef0f8;margin:9px 0 6px;overflow:hidden}
+.phase .ph-bar i{display:block;height:100%;border-radius:99px;transition:width 1s cubic-bezier(.2,.8,.2,1)}
+.phase .ph-sub{font-size:11.5px;color:var(--ink-3);font-weight:600}
+
+/* =========================================================================
+   TOOLBAR & FILTERS
+   ========================================================================= */
+.toolbar{background:rgba(255,255,255,.82);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.95);
+  border-radius:var(--radius);box-shadow:var(--shadow-1);padding:12px;margin-bottom:16px}
+.tb-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.tb-row + .tb-row{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-2)}
+.search{position:relative;flex:1 1 240px;min-width:200px}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ink-3)}
+.search input{width:100%;height:38px;border-radius:12px;border:1px solid var(--line);background:#fff;padding:0 12px 0 36px;outline:none;transition:.2s}
+.search input:focus{border-color:#a5b4fc;box-shadow:0 0 0 4px rgba(99,102,241,.12)}
+.seg{display:inline-flex;background:#f1f3fa;border-radius:12px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:7px 12px;border-radius:9px;font-weight:700;font-size:12.5px;color:var(--ink-2);transition:.2s}
+.seg button.on{background:var(--g-brand);color:#fff;box-shadow:0 6px 14px -6px rgba(124,58,237,.6)}
+.btn{height:38px;border-radius:12px;border:1px solid var(--line);background:#fff;padding:0 12px;font-weight:700;font-size:12.5px;
+  display:inline-flex;align-items:center;gap:6px;transition:.2s;color:var(--ink)}
+.btn:hover{border-color:#c7d2fe;transform:translateY(-1px);box-shadow:var(--shadow-1)}
+.btn svg{width:15px;height:15px}
+.btn.primary{background:var(--g-brand);color:#fff;border:0}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--ink-2);cursor:pointer;user-select:none;padding:0 4px}
+.toggle input{display:none}
+.toggle .sw{width:34px;height:20px;border-radius:99px;background:#dfe3ee;position:relative;transition:.25s}
+.toggle .sw::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.25s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.toggle input:checked + .sw{background:var(--g-brand)}
+.toggle input:checked + .sw::after{left:16px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;transition:.2s;color:var(--ink-2)}
+.chip i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.chip b{font-family:var(--mono);font-weight:600;font-size:11px;color:var(--ink-3)}
+.chip.on{border-color:transparent;background:var(--g);color:#fff}
+.chip.on i{background:#fff}
+.chip.on b{color:rgba(255,255,255,.85)}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding-left:2px}
+.fld select,.fld input{height:36px;border-radius:11px;border:1px solid var(--line);background:#fff;padding:0 10px;outline:none;max-width:220px}
+.fld select:focus,.fld input:focus{border-color:#a5b4fc;box-shadow:0 0 0 4px rgba(99,102,241,.12)}
+.spacer{flex:1}
+.filters-btn{display:none}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:11.5px;color:var(--ink-2);font-weight:600;align-items:center}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:22px;height:10px;border-radius:4px}
+.legend .lg-proj{background:repeating-linear-gradient(135deg,rgba(255,255,255,.7) 0 3px,transparent 3px 6px),var(--g-todo);opacity:.7;outline:1px dashed #94a3b8}
+.legend .lg-ms{width:10px;height:10px;transform:rotate(45deg);background:linear-gradient(135deg,#ec4899,#f97316);border-radius:2px}
+.legend .lg-today{width:2px;height:14px;background:#ef4444;border-radius:2px}
+
+/* =========================================================================
+   GANTT
+   ========================================================================= */
+.gcard{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-2);overflow:hidden;border:1px solid rgba(255,255,255,.9)}
+.gcard-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line-2);
+  background:linear-gradient(180deg,#fbfbff,#fff)}
+.gcard-head h2{margin:0;font-size:16px;font-weight:800;letter-spacing:-.01em}
+.gcard-head .muted{color:var(--ink-3);font-size:12.5px;font-weight:600}
+.gwrap{position:relative;overflow:auto;max-height:max(480px,calc(100vh - 160px));overscroll-behavior:contain;scroll-behavior:auto}
+.gcanvas{position:relative;min-width:100%}
+.gcanvas.fx{animation:fadeZoom .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes fadeZoom{from{opacity:.35;transform:scale(.995)}to{opacity:1;transform:none}}
+.ghead{position:sticky;top:0;z-index:20;display:flex;background:#fff;height:56px;box-shadow:0 1px 0 var(--line)}
+.gh-left{position:sticky;left:0;z-index:21;width:var(--left);flex:none;background:linear-gradient(180deg,#f8f8ff,#fff);
+  display:grid;grid-template-columns:1fr 104px 98px 46px;align-items:end;padding:0 12px 9px 16px;border-right:1px solid var(--line);
+  font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.gh-time{position:relative;flex:none;height:56px}
+.tier{position:absolute;left:0;right:0;height:28px}
+.tier.t1{top:0}.tier.t2{top:28px;border-top:1px solid var(--line-2)}
+.tcell{position:absolute;top:0;height:28px;display:flex;align-items:center;padding:0 7px;border-left:1px solid var(--line-2);
+  font-size:11.5px;font-weight:700;color:var(--ink-2);white-space:nowrap;overflow:hidden}
+.t1 .tcell{font-weight:800;color:var(--ink);font-size:12px}
+.t2 .tcell{justify-content:center;padding:0 2px;font-size:11px}
+.tcell.wkend{color:var(--ink-3)}
+.tcell.today{color:#fff}
+.tcell.today::before{content:"";position:absolute;inset:4px 2px;border-radius:7px;background:linear-gradient(90deg,#ef4444,#f97316);z-index:-1}
+.gbody{position:relative}
+.glayer{position:absolute;top:0;bottom:0;pointer-events:none;z-index:0}
+.gline{position:absolute;top:0;bottom:0;width:1px;background:var(--line-2)}
+.gline.major{background:var(--line)}
+.gshade{position:absolute;top:0;bottom:0;background:rgba(148,163,184,.07)}
+.today-line{position:absolute;top:0;bottom:0;width:2px;background:linear-gradient(180deg,#ef4444,#f97316);box-shadow:0 0 12px rgba(239,68,68,.5);z-index:3}
+.today-line::before{content:"Today";position:absolute;top:6px;left:6px;font-size:10px;font-weight:800;color:#ef4444;background:#fff;padding:1px 6px;border-radius:6px;box-shadow:var(--shadow-1);white-space:nowrap}
+.glinks{position:absolute;top:0;pointer-events:none;z-index:1;overflow:visible}
+.glinks path{fill:none;stroke:#a5b4fc;stroke-width:1.5;stroke-dasharray:5 4;opacity:.75}
+.glinks path.hl{stroke:#7c3aed;stroke-width:2.4;stroke-dasharray:none;opacity:1}
+
+.grow{position:relative;display:flex;height:var(--row);z-index:2;transition:background .15s}
+.grow:hover{background:rgba(99,102,241,.045)}
+.grow.sel{background:rgba(124,58,237,.08)}
+.grow.flash{animation:flash 1.6s ease}
+@keyframes flash{0%,40%{background:rgba(250,204,21,.28)}100%{background:transparent}}
+.gl{position:sticky;left:0;z-index:5;width:var(--left);flex:none;background:#fff;border-right:1px solid var(--line);border-bottom:1px solid var(--line-2);
+  display:grid;grid-template-columns:1fr 104px 98px 46px;align-items:center;padding:0 12px 0 0;cursor:pointer}
+.grow:hover .gl{background:#fafaff}
+.grow.sel .gl{background:#f5f3ff}
+.gt{position:relative;flex:none;border-bottom:1px solid var(--line-2)}
+.cell-task{display:flex;align-items:center;gap:6px;min-width:0;height:100%;padding-left:calc(10px + var(--lvl)*18px)}
+.cell-task .stripe{position:absolute;left:0;top:7px;bottom:7px;width:4px;border-radius:0 4px 4px 0;background:var(--pc)}
+.caret{width:22px;height:22px;border:0;background:transparent;border-radius:7px;display:grid;place-items:center;flex:none;color:var(--ink-3);transition:.2s;padding:0}
+.caret:hover{background:#eef0fb;color:var(--ink)}
+.caret svg{width:14px;height:14px;transition:transform .25s}
+.caret.closed svg{transform:rotate(-90deg)}
+.caret.ph{visibility:hidden}
+.tname{min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.tname .t1x{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:13px}
+.tname .t2x{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--ink-3);font-weight:600;margin-top:2px}
+.lvl0 .t1x{font-weight:800;font-size:13.5px}
+.lvl1 .t1x{font-weight:700}
+.code{font-family:var(--mono);font-size:10.5px;font-weight:600;padding:2px 6px;border-radius:6px;background:#eef0fb;color:#4338ca;flex:none}
+.lvl0 .code{background:var(--pc);color:#fff}
+.cell-owner{font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:6px;font-weight:600}
+.cell-pct{font-family:var(--mono);font-size:11.5px;font-weight:600;text-align:right;color:var(--ink-2)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap;
+  background:var(--bgc);color:var(--fc)}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--fc)}
+.s-Completed{--bgc:#d1fae5;--fc:#047857}
+.s-InProgress{--bgc:#dbeafe;--fc:#1d4ed8}
+.s-NotStarted{--bgc:#f1f5f9;--fc:#64748b}
+.s-Delayed{--bgc:#ffe4e6;--fc:#be123c}
+.s-OnHold{--bgc:#fef3c7;--fc:#b45309}
+.mdot{display:none;width:8px;height:8px;border-radius:50%;background:var(--fc);flex:none}
+
+/* Bars */
+.bar{position:absolute;top:10px;height:22px;border-radius:8px;background:var(--g);cursor:pointer;
+  box-shadow:0 6px 14px -6px var(--sc),inset 0 1px 0 rgba(255,255,255,.45);
+  transform-origin:left center;transition:transform .2s ease,box-shadow .2s ease,filter .2s;overflow:hidden;min-width:6px}
+.bar::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,0) 55%);pointer-events:none}
+.bar:hover{transform:translateY(-1px) scaleY(1.12);box-shadow:0 10px 22px -6px var(--sc),inset 0 1px 0 rgba(255,255,255,.5);filter:saturate(1.15)}
+.bar .fill{position:absolute;left:0;top:0;bottom:0;background:rgba(15,23,42,.18);border-radius:inherit;pointer-events:none}
+.bar .fill::after{content:"";position:absolute;right:0;top:3px;bottom:3px;width:2px;border-radius:2px;background:rgba(255,255,255,.85)}
+.bar .btxt{position:relative;z-index:1;display:block;font-size:10.5px;font-weight:800;color:#fff;padding:0 8px;line-height:22px;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.2)}
+.bar.st-Completed{--g:var(--g-done);--sc:rgba(16,185,129,.55)}
+.bar.st-InProgress{--g:var(--g-prog);--sc:rgba(79,70,229,.55)}
+.bar.st-NotStarted{--g:var(--g-todo);--sc:rgba(100,116,139,.45)}
+.bar.st-Delayed{--g:var(--g-late);--sc:rgba(244,63,94,.6)}
+.bar.st-OnHold{--g:var(--g-hold);--sc:rgba(245,158,11,.55)}
+.bar.st-InProgress .fill{background:repeating-linear-gradient(135deg,rgba(15,23,42,.2) 0 6px,rgba(15,23,42,.12) 6px 12px);background-size:17px 17px;animation:stripes 1s linear infinite}
+@keyframes stripes{to{background-position:17px 0}}
+.bar.proj{background:repeating-linear-gradient(135deg,rgba(255,255,255,.6) 0 5px,rgba(255,255,255,0) 5px 10px),var(--g);opacity:.55;
+  box-shadow:none;outline:1.5px dashed rgba(100,116,139,.55);outline-offset:-1.5px}
+.bar.proj:hover{opacity:.85}
+.bar.est{-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,.35),#000 45%);mask-image:linear-gradient(90deg,rgba(0,0,0,.35),#000 45%)}
+.bar.overdue{animation:latePulse 2.2s ease-in-out infinite}
+@keyframes latePulse{0%,100%{box-shadow:0 6px 14px -6px rgba(244,63,94,.6),0 0 0 0 rgba(244,63,94,.35)}50%{box-shadow:0 6px 14px -6px rgba(244,63,94,.6),0 0 0 6px rgba(244,63,94,0)}}
+.sbar{position:absolute;top:15px;height:12px;border-radius:4px;background:var(--pc);cursor:pointer;transform-origin:left center;
+  box-shadow:0 6px 14px -8px rgba(79,70,229,.6);transition:transform .2s}
+.sbar::before,.sbar::after{content:"";position:absolute;bottom:-6px;width:0;height:0;border-top:7px solid #475569;opacity:.55}
+.sbar::before{left:0;border-right:7px solid transparent}
+.sbar::after{right:0;border-left:7px solid transparent}
+.sbar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:inherit;background:rgba(15,23,42,.28)}
+.sbar.step{top:17px;height:8px;opacity:.75}
+.sbar.step::before,.sbar.step::after{border-top-width:5px;bottom:-5px}
+.sbar.allproj{opacity:.45;background:repeating-linear-gradient(135deg,rgba(255,255,255,.55) 0 4px,transparent 4px 8px),var(--pc)}
+.sbar:hover{transform:scaleY(1.25)}
+.blabel{position:absolute;top:0;height:var(--row);display:flex;align-items:center;font-size:11.5px;font-weight:600;color:var(--ink-2);white-space:nowrap;pointer-events:none;max-width:420px;overflow:hidden;text-overflow:ellipsis}
+.blabel.warn{color:#e11d48}
+.nodate{position:absolute;top:12px;height:18px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--ink-3);white-space:nowrap}
+.nodate i{width:16px;height:16px;border-radius:50%;background:var(--g-done);display:grid;place-items:center;color:#fff;font-style:normal;font-size:10px}
+.ms{position:absolute;top:13px;width:16px;height:16px;transform:rotate(45deg);border-radius:4px;cursor:pointer;
+  background:linear-gradient(135deg,#ec4899,#f97316);box-shadow:0 6px 14px -4px rgba(236,72,153,.6);border:2px solid #fff;z-index:4;transition:transform .2s}
+.ms:hover{transform:rotate(45deg) scale(1.25)}
+.ms.late{background:linear-gradient(135deg,#e11d48,#be123c)}
+.grow.anim .bar,.grow.anim .sbar{animation:grow .8s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i)*14ms)}
+.grow.anim .bar.overdue{animation:grow .8s cubic-bezier(.2,.8,.2,1) both,latePulse 2.2s ease-in-out 1s infinite;animation-delay:calc(var(--i)*14ms),1s}
+.grow.anim .ms{animation:pop .5s cubic-bezier(.2,.8,.2,1.4) both;animation-delay:calc(var(--i)*14ms + .5s)}
+@keyframes grow{from{transform:scaleX(0);opacity:.2}to{transform:scaleX(1);opacity:var(--op,1)}}
+.bar.proj{--op:.55}
+.sbar.allproj{--op:.45}
+@keyframes pop{from{transform:rotate(45deg) scale(0)}to{transform:rotate(45deg) scale(1)}}
+.empty{padding:60px 20px;text-align:center;color:var(--ink-3);font-weight:600}
+.empty b{display:block;font-size:16px;color:var(--ink-2);margin-bottom:6px}
+
+/* Tooltip */
+.tip{position:fixed;z-index:100;pointer-events:none;max-width:340px;background:rgba(255,255,255,.97);backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 40px -12px rgba(30,27,75,.3);padding:12px 14px;opacity:0;transform:translateY(6px);transition:opacity .15s,transform .15s}
+.tip.show{opacity:1;transform:none}
+.tip h4{margin:0 0 4px;font-size:13px;line-height:1.3}
+.tip .row{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--ink-2);margin-top:3px}
+.tip .row b{color:var(--ink);font-weight:700;text-align:right}
+.tip .pbar{height:6px;border-radius:99px;background:#eef0f8;margin-top:8px;overflow:hidden}
+.tip .pbar i{display:block;height:100%;background:var(--g-brand);border-radius:99px}
+.tip .note{margin-top:6px;font-size:11px;color:#7c3aed;font-weight:700}
+.tip .warn{color:#e11d48}
+
+/* Side panel */
+.scrim{position:fixed;inset:0;background:rgba(30,27,75,.18);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.25s;z-index:90}
+.scrim.show{opacity:1;pointer-events:auto}
+.panel{position:fixed;top:12px;right:12px;bottom:12px;width:min(440px,calc(100vw - 24px));background:#fff;border-radius:24px;z-index:95;
+  box-shadow:0 30px 80px -20px rgba(30,27,75,.45);transform:translateX(110%);transition:transform .35s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;overflow:hidden}
+.panel.show{transform:none}
+.p-head{padding:20px 22px 18px;background:var(--g-brand);color:#fff;position:relative}
+.p-head .p-code{font-family:var(--mono);font-size:11.5px;opacity:.9}
+.p-head h3{margin:6px 40px 10px 0;font-size:18px;line-height:1.3;letter-spacing:-.01em}
+.p-head .x{position:absolute;right:14px;top:14px;width:34px;height:34px;border-radius:12px;border:0;background:rgba(255,255,255,.2);color:#fff;display:grid;place-items:center}
+.p-head .x:hover{background:rgba(255,255,255,.35)}
+.p-head .badge{background:rgba(255,255,255,.95)}
+.p-body{padding:18px 22px 24px;overflow:auto;flex:1}
+.p-prog{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.p-prog .pb{flex:1;height:10px;border-radius:99px;background:#eef0f8;overflow:hidden}
+.p-prog .pb i{display:block;height:100%;border-radius:99px;background:var(--g-brand);transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.p-prog b{font-family:var(--mono);font-size:14px}
+.alert{border-radius:12px;padding:10px 12px;font-size:12.5px;font-weight:600;margin-bottom:12px}
+.alert.late{background:#fff1f2;color:#be123c;border:1px solid #fecdd3}
+.alert.proj{background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe}
+.dl{display:grid;grid-template-columns:130px 1fr;gap:9px 12px;font-size:13px}
+.dl dt{color:var(--ink-3);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;padding-top:2px}
+.dl dd{margin:0;font-weight:600;color:var(--ink);word-break:break-word;white-space:pre-line}
+.p-sec{margin-top:20px}
+.p-sec h5{margin:0 0 8px;font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3)}
+.mini{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid var(--line-2);margin-bottom:6px;font-size:12.5px;cursor:pointer;transition:.15s}
+.mini:hover{border-color:#c7d2fe;background:#fafaff}
+.mini span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+
+/* Pending section */
+.section-title{display:flex;align-items:center;justify-content:space-between;margin:26px 2px 12px}
+.section-title h2{margin:0;font-size:18px;font-weight:800;letter-spacing:-.01em}
+.section-title span{color:var(--ink-3);font-weight:600;font-size:12.5px}
+.pend{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px;perspective:900px}
+.pcard{background:#fff;border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow-1);position:relative;overflow:hidden;
+  transform-style:preserve-3d;transition:transform .25s,box-shadow .25s;animation:rise .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--k)*80ms)}
+.pcard:hover{box-shadow:var(--shadow-2)}
+.pcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#ec4899,#f97316)}
+.pc-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pc-num{width:30px;height:30px;border-radius:10px;background:linear-gradient(135deg,#ec4899,#f97316);color:#fff;font-weight:800;display:grid;place-items:center;font-size:13px;flex:none}
+.pc-due{font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;background:#fdf2f8;color:#be185d;white-space:nowrap}
+.pc-due.late{background:#ffe4e6;color:#be123c}
+.pc-due.none{background:#f1f5f9;color:#64748b}
+.pcard h4{margin:10px 0 10px;font-size:14px;line-height:1.35}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.flow span{font-size:11px;font-weight:700;background:#f5f3ff;color:#5b21b6;padding:3px 8px;border-radius:7px}
+.flow em{font-style:normal;color:#c4b5fd;font-size:11px}
+.pc-rem{margin-top:10px;font-size:12px;color:var(--ink-2);background:#fafafa;border-radius:10px;padding:8px 10px}
+
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,30px);opacity:0;background:#1e1b4b;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:600;
+  z-index:120;transition:.3s;box-shadow:0 20px 40px -12px rgba(30,27,75,.5);max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.foot{margin-top:28px;text-align:center;color:var(--ink-3);font-size:12px;font-weight:600}
+
+/* =========================================================================
+   RESPONSIVE
+   ========================================================================= */
+@media (max-width:1280px){ .kpis{grid-template-columns:repeat(3,minmax(0,1fr))} }
+@media (max-width:1024px){
+  :root{--left:330px}
+  .gh-left,.gl{grid-template-columns:1fr 98px 42px}
+  .gh-left .h-owner,.gl .cell-owner{display:none}
+}
+@media (max-width:720px){
+  :root{--left:168px;--row:44px}
+  .app{padding:12px 12px 36px}
+  .hero{padding:20px 18px;border-radius:20px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0 12px}
+  .kpi{padding:14px}
+  .kpi .k-val{font-size:26px}
+  .kpi.ring,.kpi[data-kpi="total"]{grid-column:span 2}
+  .gh-left,.gl{grid-template-columns:1fr}
+  .gh-left .h-status,.gh-left .h-pct,.gl .cell-status,.gl .cell-pct{display:none}
+  .mdot{display:inline-block}
+  .cell-task{padding-left:calc(6px + var(--lvl)*10px)}
+  .code{display:none}
+  .lvl0 .code{display:inline-block}
+  .tname .t2x{display:none}
+  .filters-btn{display:inline-flex}
+  .tb-row.filters{display:none}
+  .tb-row.filters.open{display:flex}
+  .fld{flex:1 1 140px}
+  .fld select,.fld input{max-width:none;width:100%}
+  .legend{gap:10px}
+  .panel{top:auto;left:8px;right:8px;bottom:8px;width:auto;max-height:82vh;transform:translateY(110%)}
+  .pend{grid-template-columns:1fr}
+  .blabel{font-size:11px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset=".5" stop-color="#7c3aed"/><stop offset="1" stop-color="#db2777"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a5b4fc"/></marker>
+  </defs>
+</svg>
+
+<div class="app">
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <div style="position:relative;z-index:1">
+      <div class="eyebrow">Live Process Gantt</div>
+      <h1 id="title">Kankarei R&amp;R Process</h1>
+      <p id="subtitle">Land valuation, compensation, cut-off date and resettlement &amp; rehabilitation tracker</p>
+    </div>
+    <div class="sync">
+      <span class="pill" id="syncPill"><span class="dot" id="syncDot"></span><span id="syncText">Connecting…</span></span>
+      <span class="pill" id="changedPill" title="When the Google Sheet data last changed">Sheet changed —</span>
+      <button class="btn-glass" id="refreshBtn" title="Refresh now">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Refresh
+      </button>
+    </div>
+    <div class="demo-note" id="demoNote">Showing the built-in snapshot of <b>RR_Process_Kankarei.xlsx</b>. Paste your Apps Script web-app URL into <code>CONFIG.API_URL</code> (or open this page with <code>?api=YOUR_URL</code>) to go live.</div>
+  </header>
+
+  <!-- ============ KPIs ============ -->
+  <section class="kpis" id="kpis"></section>
+  <section class="phases" id="phases"></section>
+
+  <!-- ============ TOOLBAR ============ -->
+  <section class="toolbar">
+    <div class="tb-row">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="search" placeholder="Search tasks, deliverables, offices, people, remarks…" autocomplete="off">
+      </div>
+      <div class="seg" id="zoomSeg" role="group" aria-label="Zoom">
+        <button data-z="day">Day</button><button data-z="week">Week</button><button data-z="month">Month</button><button data-z="quarter">Quarter</button>
+      </div>
+      <button class="btn primary" id="todayBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Today</button>
+      <button class="btn" id="expandBtn" title="Expand all">Expand</button>
+      <button class="btn" id="collapseBtn" title="Collapse to activities">Collapse</button>
+      <button class="btn filters-btn" id="filtersBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>Filters</button>
+    </div>
+    <div class="tb-row filters" id="filtersRow">
+      <div class="chips" id="statusChips"></div>
+      <div class="spacer"></div>
+      <div class="fld"><label for="fPhase">Phase</label><select id="fPhase"></select></div>
+      <div class="fld"><label for="fAct">Activity</label><select id="fAct"></select></div>
+      <div class="fld"><label for="fOffice">Office</label><select id="fOffice"></select></div>
+      <div class="fld"><label for="fPerson">Owner</label><select id="fPerson"></select></div>
+      <div class="fld"><label for="fFrom">From</label><input id="fFrom" type="date"></div>
+      <div class="fld"><label for="fTo">To</label><input id="fTo" type="date"></div>
+      <div class="fld"><label>&nbsp;</label><button class="btn" id="clearBtn">Clear</button></div>
+    </div>
+    <div class="tb-row">
+      <div class="legend">
+        <span><i style="background:var(--g-done)"></i>Completed</span>
+        <span><i style="background:var(--g-prog)"></i>In progress</span>
+        <span><i style="background:var(--g-todo)"></i>Not started</span>
+        <span><i style="background:var(--g-late)"></i>Delayed / overdue</span>
+        <span><i style="background:var(--g-hold)"></i>On hold</span>
+        <span><i class="lg-proj"></i>Projected (no dates in sheet)</span>
+        <span><i class="lg-ms"></i>Pending-item target</span>
+        <span><i class="lg-today"></i>Today</span>
+      </div>
+      <div class="spacer"></div>
+      <label class="toggle"><input type="checkbox" id="tProj" checked><span class="sw"></span>Projected bars</label>
+      <label class="toggle"><input type="checkbox" id="tLinks" checked><span class="sw"></span>Dependencies</label>
+    </div>
+  </section>
+
+  <!-- ============ GANTT ============ -->
+  <section class="gcard">
+    <div class="gcard-head">
+      <h2>Process timeline</h2>
+      <span class="muted" id="ganttMeta"></span>
+    </div>
+    <div class="gwrap" id="gwrap"><div class="gcanvas" id="gcanvas"></div></div>
+  </section>
+
+  <!-- ============ PENDING ============ -->
+  <div class="section-title"><h2>Pending actions</h2><span id="pendMeta"></span></div>
+  <section class="pend" id="pending"></section>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<div class="tip" id="tip"></div>
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel" aria-hidden="true"></aside>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================================
+   CONFIG — paste your Apps Script web-app URL (ends with /exec) below.
+   Leave it empty to run on the built-in snapshot of the Excel file.
+   You can also pass it in the page URL:  index.html?api=https://script.google.com/.../exec
+   ========================================================================= */
+const CONFIG = {
+  API_URL: 'https://script.google.com/macros/s/AKfycbz0OhOgrjt1MzgQWyLrFHqQyGC3MyuobC28kR78uwUx0pMT8ZOY4iQbR7Utdtulbr4iYg/exec',
+  POLL_SECONDS: 5,          // how often to check the sheet for changes
+  DEFAULT_ZOOM: 'week'      // day | week | month | quarter
+};
+
+/* Snapshot of RR_Process_Kankarei.xlsx in the same shape the API returns. */
+const DEMO_DATA = {"ok":true,"version":"demo","settings":{"DASHBOARD_TITLE":"Kankarei R&R Process","DASHBOARD_SUBTITLE":"Land valuation, compensation, cut-off date and resettlement & rehabilitation tracker","DEFAULT_DURATION_DAYS":"7","PROJECTION_START":""},"activities":[{"_row":2,"code":"1A","phase":"1 · Valuation","name":"Land-Market Valuation Process","office":"MCL-DC","person":"","start":"","end":"","dependsOn":"","status":"","remarks":"","extra":{}},{"_row":3,"code":"1B","phase":"1 · Valuation","name":"Structure Yadast and Estimate Preparation","office":"AMPL-SCML-MCL","person":"","start":"","end":"","dependsOn":"","status":"In Progress","remarks":"Yadast Ongoing","extra":{}},{"_row":4,"code":"1C","phase":"1 · Valuation","name":"Tree Enumeration & Rate derivation","office":"AMPL-SCML-MCL","person":"","start":"","end":"","dependsOn":"","status":"In Progress","remarks":"Enumeration Ongoing","extra":{}},{"_row":5,"code":"2A","phase":"2 · Compensation & Possession","name":"Compensation Roll Preparation & Approval","office":"SCML-MCL-HQ","person":"","start":"","end":"","dependsOn":"1A, 1B, 1C","status":"","remarks":"","extra":{}},{"_row":6,"code":"2B","phase":"2 · Compensation & Possession","name":"CR Disbursment","office":"SCML","person":"Rana","start":"","end":"","dependsOn":"2A","status":"","remarks":"Revised C/R by 15/11/2026","extra":{}},{"_row":7,"code":"2C","phase":"2 · Compensation & Possession","name":"Handover of Possession of Acquired land and structures of Cat- iii & vi","office":"AMPL","person":"Bikash","start":"","end":"","dependsOn":"","status":"","remarks":"","extra":{}},{"_row":8,"code":"2D","phase":"2 · Compensation & Possession","name":"Handover of Possession of Acquired land and structures of Cat- iv & V","office":"","person":"Bikash","start":"","end":"","dependsOn":"","status":"","remarks":"","extra":{}},{"_row":9,"code":"3A","phase":"3 · Cut-off Date","name":"Cut-off date declaration for R&R process","office":"Village-MCL-DC","person":"Rana >> Bikash","start":"","end":"","dependsOn":"2B","status":"","remarks":"","extra":{}},{"_row":10,"code":"4A","phase":"4 · Resettlement & Rehabilitation","name":"Base line data collection and Preparation of Family genelogy and finalization of Categories according to ORRP-2006","office":"AMPL-SCML","person":"Rana","start":"","end":"","dependsOn":"","status":"","remarks":"Resettlement and Rehabilitation both are parallel Process.","extra":{}},{"_row":11,"code":"4B","phase":"4 · Resettlement & Rehabilitation","name":"Rehabilitation Process","office":"SCML-MCL-HQ","person":"Rana >> Joydeep","start":"","end":"","dependsOn":"4A","status":"","remarks":"","extra":{}},{"_row":12,"code":"4B-16","phase":"4 · Resettlement & Rehabilitation","name":"Handover of Possession Acquired land","office":"AMPL","person":"Bikash","start":"","end":"","dependsOn":"","status":"","remarks":"","extra":{}},{"_row":13,"code":"4C","phase":"4 · Resettlement & Rehabilitation","name":"Resettlement Process","office":"SCML-MCL-HQ","person":"Rana >> Joydeep","start":"","end":"","dependsOn":"4A","status":"","remarks":"","extra":{}},{"_row":14,"code":"4C-14","phase":"4 · Resettlement & Rehabilitation","name":"Handover of Possession Acquired land","office":"AMPL","person":"Bikash","start":"","end":"","dependsOn":"","status":"","remarks":"","extra":{}}],"tasks":[{"_row":2,"id":"T001","activityCode":"1A","step":"1","keyAction":"Draft preparation by MDO","output":"Land Schedule preparation","office":"SCML","person":"Rana","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"Done","extra":{}},{"_row":3,"id":"T002","activityCode":"1A","step":"1","keyAction":"Draft preparation by MDO","output":"Approved Sales statistics collection from DSR","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":4,"id":"T003","activityCode":"1A","step":"1","keyAction":"Draft preparation by MDO","output":"Approved BMV collection from DSR","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":5,"id":"T004","activityCode":"1A","step":"1","keyAction":"Draft preparation by MDO","output":"Calculation of Market Value as per LAAR 2013 and ORRP 2006","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":6,"id":"T005","activityCode":"1A","step":"2","keyAction":"Forwarded to Area office MCL for scrutiny","output":"","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":7,"id":"T006","activityCode":"1A","step":"3","keyAction":"After scrutiny and modification (if needed) Area office will forward to GM L&R (HQ) for vetting.","output":"If any modification needed GM L&R will ask to area office for correction.","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":8,"id":"T007","activityCode":"1A","step":"3","keyAction":"After scrutiny and modification (if needed) Area office will forward to GM L&R (HQ) for vetting.","output":"Approval from MCL HQ","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":9,"id":"T008","activityCode":"1A","step":"4","keyAction":"Approval of Market Value","output":"Area Committee will Put-up to DM, Angul for Approval of MV","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":10,"id":"T009","activityCode":"1A","step":"4","keyAction":"Approval of Market Value","output":"Collector will forward to SPCL LAO for scrutiny.","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":11,"id":"T010","activityCode":"1A","step":"4","keyAction":"Approval of Market Value","output":"If any major mistake is noticed then file will return to MCL for clarification.","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":12,"id":"T011","activityCode":"1A","step":"4","keyAction":"Approval of Market Value","output":"If any changes needed for the benefits of the villagers SPCL LAO will revise the MRV by consulting ADM and DM.","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":13,"id":"T012","activityCode":"1A","step":"4","keyAction":"Approval of Market Value","output":"SPCL LAO will forward to ADM and then DM. Then DM will Publish the MV","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":14,"id":"T013","activityCode":"1B","step":"1","keyAction":"RT Identification","output":"","office":"AMPL","person":"Rana","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"1524 Structures identified (Excluding Pradhan Group)","extra":{}},{"_row":15,"id":"T014","activityCode":"1B","step":"2","keyAction":"Structure Measurment","output":"Both Civil team of SCML (Including AMPL Civil team)and MCL will do","office":"AMPL","person":"Rana","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"1524 Structures Measurement Done","extra":{}},{"_row":16,"id":"T015","activityCode":"1B","step":"3","keyAction":"Bill Of Quantity","output":"","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":17,"id":"T016","activityCode":"1B","step":"4","keyAction":"Estimate As Per Sor (Schedule Of Rate)","output":"","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":18,"id":"T017","activityCode":"1B","step":"5","keyAction":"Forwad To Mcl Area Office For Vetting","output":"","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":19,"id":"T018","activityCode":"1B","step":"6","keyAction":"Price Of Indivisual Yaadast","output":"","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":20,"id":"T019","activityCode":"1C","step":"1","keyAction":"RT Identification","output":"","office":"AMPL","person":"Rana","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"734 Tree Enumerated (Excluding Pradhan Group)","extra":{}},{"_row":21,"id":"T020","activityCode":"1C","step":"2","keyAction":"Tree Yaadast/ Enemuration","output":"With both RI of MCL and SCML and AMPL Executives","office":"AMPL","person":"Rana","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"734 Tree Enumerated","extra":{}},{"_row":22,"id":"T021","activityCode":"1C","step":"3","keyAction":"According To The Type & Classification Of Trees The Rate Will Be Determined","output":"The Value Of Fruit Bearing Trees Will Be Collected From Horticulture Dept.","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":23,"id":"T022","activityCode":"1C","step":"3","keyAction":"According To The Type & Classification Of Trees The Rate Will Be Determined","output":"The Value Of Timber Trees Will Be Collected From DFO Office.","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":24,"id":"T023","activityCode":"1C","step":"4","keyAction":"The Derived Rate Will Be Forwarded To Area Office For Vetting","output":"","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":25,"id":"T024","activityCode":"1C","step":"5","keyAction":"Approved Valuation Of Trees","output":"","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":26,"id":"T025","activityCode":"2A","step":"1","keyAction":"Preperation Of Draft Compensation Role By Scml","output":"Land Compensation Calculation (100% Solatium, Distance Factor & Interest)","office":"SCML","person":"Rana","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"993 Khata Compensation Approved","extra":{}},{"_row":27,"id":"T026","activityCode":"2A","step":"1","keyAction":"Preperation Of Draft Compensation Role By Scml","output":"Structure Compensation (100% Solatium)","office":"SCML","person":"","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"1524 Structure Notice ready","extra":{}},{"_row":28,"id":"T027","activityCode":"2A","step":"1","keyAction":"Preperation Of Draft Compensation Role By Scml","output":"Tree Compensation (100% Solatium)","office":"SCML","person":"","start":"","end":"","duration":null,"progress":100,"status":"Completed","dependsOn":"","remarks":"734 Tree Notice ready","extra":{}},{"_row":29,"id":"T028","activityCode":"2A","step":"2","keyAction":"Put-Up To Area Office For Scrutiny And Approval","output":"","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":30,"id":"T029","activityCode":"2A","step":"3","keyAction":"Forwarded To Gm L&R For Vetting And Approval","output":"After scrutiny the area ofc forward the file to GM L&R","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":31,"id":"T030","activityCode":"2A","step":"4","keyAction":"Forwad To Gm Civil For Vetting And Approval","output":"","office":"MCL HQ","person":"Joydeep Biswas","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":32,"id":"T031","activityCode":"2A","step":"5","keyAction":"Forwad To Gm Finance For Vetting And Approval","output":"","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":33,"id":"T032","activityCode":"2A","step":"6","keyAction":"Forwad To Gm Project And For Vetting And Approval","output":"","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":34,"id":"T033","activityCode":"2A","step":"7","keyAction":"Forward To Dt P&P For Vetting And Approval","output":"","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":35,"id":"T034","activityCode":"2A","step":"8","keyAction":"Forwad To Dt Operations For Vetting And Approval","output":"","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":36,"id":"T035","activityCode":"2A","step":"9","keyAction":"Forwad To Cmd For Vetting And Approval","output":"To be approved as per DOP (Delegation of Power)\nGM(L&R) →DT (Project & Planning) & DT (Operation) →Director (HR/ Personnel) → Director (Finance) → CMD → Functional Director","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":37,"id":"T036","activityCode":"2A","step":"10","keyAction":"Forwad To Functional Director For Vetting And Approval","output":"","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":38,"id":"T037","activityCode":"2A","step":"11","keyAction":"Communicate To Area Office","output":"","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":39,"id":"T038","activityCode":"2A","step":"12","keyAction":"Communicate To Mcl For Disbursement To Awardees With Proper Documents.","output":"","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":40,"id":"T039","activityCode":"2B","step":"1","keyAction":"Payment Process","output":"Preparation of Payment disbursement Notice for every RT of approved ROR (Excluding Disputed Khatas)","office":"SCML/ MCL","person":"Bhabesh Rana","start":"","end":"2026-10-31","duration":null,"progress":null,"status":"In Progress","dependsOn":"","remarks":"Ongoing","extra":{}},{"_row":41,"id":"T040","activityCode":"2B","step":"1","keyAction":"Payment Process","output":"Notice distribution to Legal Hairs","office":"SCML/ AMPL","person":"SCML Team/Raj","start":"","end":"2026-11-10","duration":null,"progress":null,"status":"In Progress","dependsOn":"","remarks":"Ongoing","extra":{}},{"_row":42,"id":"T041","activityCode":"2B","step":"1","keyAction":"Payment Process","output":"Collection of documents (15nos ) from Legal hairs for the Original RT","office":"AMPL","person":"Rana/Raj","start":"","end":"2026-11-30","duration":null,"progress":null,"status":"In Progress","dependsOn":"","remarks":"Ongoing","extra":{}},{"_row":43,"id":"T042","activityCode":"2B","step":"1","keyAction":"Payment Process","output":"Verification of documents at both SCML -> MCL","office":"SCML/ MCL","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":44,"id":"T043","activityCode":"2B","step":"1","keyAction":"Payment Process","output":"Disbursement of CR to legal hairs as per the Payment receiving affidavit provided by legal hair","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"Follow up with SCML team for payment","extra":{}},{"_row":45,"id":"T044","activityCode":"2B","step":"2","keyAction":"Reimbursement to SCML","output":"Reimbursement through MCL Area Office","office":"MCL HQ","person":"Joydeep Biswas","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":46,"id":"T045","activityCode":"2B","step":"3","keyAction":"If the person interested shall not consent to receive it or if there be any dispute as to the sufficiency of the amount of compensation or the title to receive it or the apportionment thereof, the MCL shall deposit the amount of compensation with the Tribunal.","output":"","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":47,"id":"T046","activityCode":"2C","step":"1","keyAction":"Handover of Possession of Acquired land and structures of Cat- iii & vi","output":"","office":"AMPL","person":"Rana","start":"","end":"","duration":null,"progress":null,"status":"In Progress","dependsOn":"","remarks":"Ongoing","extra":{}},{"_row":48,"id":"T047","activityCode":"3A","step":"1","keyAction":"Monitor progress of land acquisition and compensation disbursement to recorded tenants (RTs).","output":"Status report on compensation disbursed","office":"MCL Area Office","person":"Bikash Choudhury","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":49,"id":"T048","activityCode":"3A","step":"2","keyAction":"Verify that at least 60–70% RTs have received their compensation belonging to a particular village/ mouza.","output":"Certified report confirming threshold achieved","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":50,"id":"T049","activityCode":"3A","step":"3","keyAction":"Submit of application for fixation of cut of date by villagers","output":"Villagers will submit applications for the fixation of cut off date individually with their willingness to take cash in lieu of plots for resettlement and they will vacate all their land after getting R&R benefit.","office":"AMPL","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":51,"id":"T050","activityCode":"3A","step":"4","keyAction":"Submit proposal to District Magistrate (DM) for approval.","output":"File submission with supporting documents","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":52,"id":"T051","activityCode":"3A","step":"5","keyAction":"Scrutiny & Initiate proposal for fixation of cut-off date for R&R process based on compensation status.","output":"Proposal note prepared by Sp. LAO","office":"MCL Area Office / Sp. LAO Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":53,"id":"T052","activityCode":"3A","step":"6","keyAction":"District Magistrate reviews and finalises the cut-off date of affected/displaced families for specific village/mouza.","output":"Official DM order fixing cut-off date","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":54,"id":"T053","activityCode":"3A","step":"7","keyAction":"Communicate cut-off date to all stakeholders (affected families, project authority, R&R officers).","output":"Public notification of cut-off date","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":55,"id":"T054","activityCode":"3A","step":"7","keyAction":"Communicate cut-off date to all stakeholders (affected families, project authority, R&R officers).","output":"Acknowledgement from stakeholders","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":56,"id":"T055","activityCode":"4A","step":"1","keyAction":"Survey & Enumeration","output":"Conduct survey from electroral roll & enumeration of RoRs","office":"AMPL / SCML","person":"Rana","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":57,"id":"T056","activityCode":"4A","step":"1","keyAction":"Survey & Enumeration","output":"Prepare Survey Report of Affected Families & Landholders","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":58,"id":"T057","activityCode":"4A","step":"2","keyAction":"Reconciliation of Records","output":"Match survey findings with RoR and other official records","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":59,"id":"T058","activityCode":"4A","step":"2","keyAction":"Reconciliation of Records","output":"Prepare Reconciled Report of Families against Land (Family genelogy)","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":60,"id":"T059","activityCode":"4A","step":"3","keyAction":"Assessment of Individual Share","output":"Assess individual share of each RT/Awardee as per RoR","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":61,"id":"T060","activityCode":"4A","step":"3","keyAction":"Assessment of Individual Share","output":"Prepare Individual Entitlement Record","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":62,"id":"T061","activityCode":"4B","step":"1","keyAction":"Preparation of Draft sponsor list","output":"Prepare Draft sponsor list of land & family details (Cat-i&ii) village-wise","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":63,"id":"T062","activityCode":"4B","step":"2","keyAction":"Submit the Draft sponsor list to MCL Area Office","output":"Submit the Draft Statement at MCL Area Office to Publish in Villages","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":64,"id":"T063","activityCode":"4B","step":"3","keyAction":"Draft Statement Publicity & Objections","output":"Publish draft statement in villages.","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":65,"id":"T064","activityCode":"4B","step":"3","keyAction":"Draft Statement Publicity & Objections","output":"Invite & note the Objections","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":66,"id":"T065","activityCode":"4B","step":"4","keyAction":"Finalization of Family & Land Details","output":"Workout on the Objections & Finalize land & family details","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":67,"id":"T066","activityCode":"4B","step":"4","keyAction":"Finalization of Family & Land Details","output":"Prepare Final Composite Statement","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":68,"id":"T067","activityCode":"4B","step":"5","keyAction":"Submit the Final Statement to MCL Area Office","output":"Submit the Final Statement at MCL Area Office to process further","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":69,"id":"T068","activityCode":"4B","step":"6","keyAction":"Preparation of Joint Sponsor Statement","output":"Prepare village-wise joint sponsor statement","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":70,"id":"T069","activityCode":"4B","step":"7","keyAction":"Verified Nominee List preparation","output":"Conduct screening test of individual nominees (10 per day).","office":"MCL area office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":71,"id":"T070","activityCode":"4B","step":"7","keyAction":"Verified Nominee List preparation","output":"Verify & scrutinize documents submitted by nominees","office":"MCL area office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":72,"id":"T071","activityCode":"4B","step":"8","keyAction":"Verification of Age, Qualification & Deciding eligibility of the non-matriculate/literate/ illiterate nominees","output":"Age assessment by the Area Medical Board for illiterate nominees","office":"MCL area office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":73,"id":"T072","activityCode":"4B","step":"8","keyAction":"Verification of Age, Qualification & Deciding eligibility of the non-matriculate/literate/ illiterate nominees","output":"Verification of Certificates from concerned Board for literate nominies","office":"MCL area office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":74,"id":"T073","activityCode":"4B","step":"9","keyAction":"Preparation of Screening Report","output":"Prepare Family genelogy and composite screening report with reasons & recommendations","office":"SCML & MCL area office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":75,"id":"T074","activityCode":"4B","step":"10","keyAction":"Submit the final screening report to MCL Area Committie","output":"Put-Up To Area Committe For Scrutiny And Approval","office":"SCML & MCL area office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":76,"id":"T075","activityCode":"4B","step":"11","keyAction":"Sent to Spl LAO for scrutiny and endorsement of the screening report(one month)","output":"Spcl LAO office will review the sponsor list and screening report","office":"Special LaO Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":77,"id":"T076","activityCode":"4B","step":"11","keyAction":"Sent to Spl LAO for scrutiny and endorsement of the screening report(one month)","output":"Special LAO MCL will forward the final report to Area committie for further approval","office":"Special LaO Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":78,"id":"T077","activityCode":"4B","step":"12","keyAction":"MCL area committee will forwarded to MCL HQ, Burla","output":"Checked & Forwarded to MCL HQ for scrutiny & endorsement","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":79,"id":"T078","activityCode":"4B","step":"12","keyAction":"MCL area committee will forwarded to MCL HQ, Burla","output":"Forwarded To Gm L&R For Vetting And Approval","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":80,"id":"T079","activityCode":"4B","step":"12","keyAction":"MCL area committee will forwarded to MCL HQ, Burla","output":"After Scutiny and approval, GM L&R will forward the file to MCL Area committie","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":81,"id":"T080","activityCode":"4B","step":"13","keyAction":"Submit Final Report to District Magistrate (DM) for approval.","output":"Screening Report submission with supporting documents by area office","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":82,"id":"T081","activityCode":"4B","step":"14","keyAction":"District Magistrate reviews and Approves","output":"DM will forward the file for final check to Special LAO office","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":83,"id":"T082","activityCode":"4B","step":"14","keyAction":"District Magistrate reviews and Approves","output":"Spcl LAO office will review the final Sponsor List and forward to DM for Approval","office":"Special LaO Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":84,"id":"T083","activityCode":"4B","step":"14","keyAction":"District Magistrate reviews and Approves","output":"DM will approve the list and forwarded to MCL area office","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":85,"id":"T084","activityCode":"4B","step":"15","keyAction":"Forwarded to MCL HQ by area office for final approval","output":"Forwad To Functional Director For Vetting And Approval","office":"MCL HQ","person":"Joydeep Biswas","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":86,"id":"T085","activityCode":"4B","step":"15","keyAction":"Forwarded to MCL HQ by area office for final approval","output":"GM(L&R) → GM (HR/Personnel- Non Executive Establishment) → Director (HR/ Personnel) → CMD → Functional Director","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":87,"id":"T086","activityCode":"4B","step":"16","keyAction":"Appointment Process of Nominees","output":"After handing over physical possession of the acquired land and house etc, offer of appointment to the land oustee nominee are issued.","office":"MCL Area Office","person":"Rana","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":88,"id":"T087","activityCode":"4B","step":"16","keyAction":"Appointment Process of Nominees","output":"Offer of appointment will be provided by Area HR/ Personnel Manager","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":89,"id":"T088","activityCode":"4B","step":"17","keyAction":"Conduct IME (Initial Medical Examination)","output":"Medical check up (NACH at Talcher)","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":90,"id":"T089","activityCode":"4B","step":"17-A","keyAction":"If Fit","output":"","office":"","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":91,"id":"T090","activityCode":"4B","step":"17-A","keyAction":"MCL HQ to confirm place of posting","output":"","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":92,"id":"T091","activityCode":"4B","step":"17-A","keyAction":"Issue joining letter.","output":"","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":93,"id":"T092","activityCode":"4B","step":"17-B","keyAction":"If Un-Fit","output":"","office":"","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":94,"id":"T093","activityCode":"4B","step":"17-B","keyAction":"Option-1","output":"Sponsor will nominate another nominee of his Family","office":"","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":95,"id":"T094","activityCode":"4B","step":"17-B","keyAction":"Option-2","output":"Cash Compensation as per Combine guideline of MCL & ORRP-2006 Policy","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"SCML will reimburse from MCL","extra":{}},{"_row":96,"id":"T095","activityCode":"4B","step":"17-B","keyAction":"Option-3","output":"Annuity will Paid as per Combine guideline of MCL & ORRP-2006 Policy on monthly Basis.","office":"MCL","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":97,"id":"T096","activityCode":"4C","step":"1","keyAction":"Preparation of Draft PDFs List","output":"Prepare draft Project Displaced Families (PDFs) list based on composite land & family details (Of Cat - I, ii , iv & v)","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"Here MCL is providing Cash in Lieu of Homestead Plots (as per letter no 6854, Dated-21.08.2020)","extra":{}},{"_row":98,"id":"T097","activityCode":"4C","step":"2","keyAction":"Preparation of Cash Grants in Lieu of Homestead Land for each PDF","output":"","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":99,"id":"T098","activityCode":"4C","step":"3","keyAction":"Submit the Draft PDFs List to MCL Area Office","output":"Submit the Draft PDFs List at MCL Area Office to Publish in Villages","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":100,"id":"T099","activityCode":"4C","step":"4","keyAction":"Draft PDFs List Publicity & Objections","output":"Publish draft list in villages.","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":101,"id":"T100","activityCode":"4C","step":"4","keyAction":"Draft PDFs List Publicity & Objections","output":"Invite & Note the Objections","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":102,"id":"T101","activityCode":"4C","step":"5","keyAction":"Finalization of PDFs list","output":"Workout on the Objections & Finalize PDFs list","office":"SCML & MCL area office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":103,"id":"T102","activityCode":"4C","step":"5","keyAction":"Finalization of PDFs list","output":"Prepare Final PDF list","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":104,"id":"T103","activityCode":"4C","step":"6","keyAction":"Submit the Final PDFs List at MCL Area Office to proceed further","output":"","office":"SCML","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":105,"id":"T104","activityCode":"4C","step":"7","keyAction":"MCL Area office will Forward the PDF list to GM (L&R) after vetting","output":"GM (L&R) will do the Scrutiny and Vetting of PDF List and forwarded to MCL Area Committee","office":"MCL","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":106,"id":"T105","activityCode":"4C","step":"8","keyAction":"Submit Final PDFs list to District Magistrate (DM) for approval.","output":"File submission with supporting documents by Area Committee","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":107,"id":"T106","activityCode":"4C","step":"9","keyAction":"DM will sent to Spl LAO for scrutiny & approval","output":"Special LAO MCL will do the scrutiny and vetting work (Spl. LAO may also do the Public Grievance to hear any objections from stake holders and if required he will correct the list with consulting MCL)","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":108,"id":"T107","activityCode":"4C","step":"10","keyAction":"Special LAO MCL forwarded the Updated List to the DM for approval","output":"","office":"Special LaO Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":109,"id":"T108","activityCode":"4C","step":"11","keyAction":"DM approves the PDF list Forwarded to MCL","output":"","office":"Collector Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":110,"id":"T109","activityCode":"4C","step":"12","keyAction":"MCL area committee will forwarded to MCL HQ, Burla","output":"MCL area office will forwarded the PDF list with Cash Grants for approval & Sanction","office":"MCL Area Office","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":111,"id":"T110","activityCode":"4C","step":"12","keyAction":"MCL area committee will forwarded to MCL HQ, Burla","output":"To be approved as per DOP (Delegation of Power)\nGM(L&R) →DT (Project & Planning) & DT (Operation) → Director (Finance) → CMD → Functional Director","office":"","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"As per the amount to be approved the competent autority will be decided","extra":{}},{"_row":112,"id":"T111","activityCode":"4C","step":"13","keyAction":"Approval list and Sanctioned Cash Grants communicate to MCL Area committee","output":"","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":113,"id":"T112","activityCode":"4C","step":"14","keyAction":"MCL Area committee willl communicate to SCML for Disbursement","output":"After handing over physical possession of the acquired lands and house the PDF package i.e. 25lakh will be disbursed.","office":"MCL & SCML","person":"Rana","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}},{"_row":114,"id":"T113","activityCode":"4C","step":"15","keyAction":"Reimbursement to SCML","output":"Reimbursement through MCL Area Office","office":"MCL HQ","person":"","start":"","end":"","duration":null,"progress":null,"status":"Not Started","dependsOn":"","remarks":"","extra":{}}],"pending":[{"_row":2,"sl":"1","activityCode":"2C","item":"Revised CR inclusing Exgratia, Increment factor of land, tree and structure","flow":"Area ofc-> GM L&R-FD-Area Finance- Area Land ofc- SCML- notice Serve- Disbursmnet","target":"2026-11-15","remarks":"15/11/2026","extra":{}},{"_row":3,"sl":"2","activityCode":"2C","item":"Tree cutting permission of all Private land","flow":"SCML letter to MCL-application from MCL to DFO-Enumeration Permission to Ranger-Enm report submitted to DFO-Demand note issue- Payment of demand- Cutting permission fro DFO","target":"2026-11-20","remarks":"Enumeration permission can be taken from DFO by 20/11/2026. After payment of demand note by DFO, felling permission may be taken.","extra":{}},{"_row":4,"sl":"3","activityCode":"2C","item":"Post 9(1) Genuineness findings","flow":"Sub committie data declaration-CR Approval- payment disbursment","target":"2026-11-20","remarks":"20/11/2026","extra":{}},{"_row":5,"sl":"4","activityCode":"2D","item":"PDF package disbursement (Cat - Iv& v)","flow":"Draft PDF List preparation- Area Committie approval- Gm L&R- FD- Area Ofc- DC -Area ofc- HQ finance- Area Finance- Area Ofc- SCMl- Payment disbursement","target":"","remarks":"","extra":{}}]};
+
+/* =========================================================================
+   UTILITIES
+   ========================================================================= */
+const DAY = 86400000;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+/** ISO yyyy-mm-dd -> integer day number (UTC based, DST-safe). */
+function dn(iso){ if(!iso) return null; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return null; return Math.round(Date.UTC(+m[1], +m[2]-1, +m[3]) / DAY); }
+const dnDate = n => new Date(n * DAY);
+const isoOf = n => dnDate(n).toISOString().slice(0,10);
+function fmtD(n, withYear = true){ if(n == null) return '—'; const d = dnDate(n); return `${String(d.getUTCDate()).padStart(2,'0')} ${MON[d.getUTCMonth()]}${withYear ? ' ' + d.getUTCFullYear() : ''}`; }
+const now = new Date();
+let TODAY = Math.round(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const uniqKey = s => String(s).toLowerCase().replace(/\s+/g, ' ').trim();
+const isTouch = matchMedia('(hover: none)').matches;
+
+const STATUS = {
+  Completed:  { key:'Completed',  label:'Completed',   c:'var(--c-done)', g:'var(--g-done)' },
+  InProgress: { key:'InProgress', label:'In Progress', c:'var(--c-prog)', g:'var(--g-prog)' },
+  NotStarted: { key:'NotStarted', label:'Not Started', c:'var(--c-todo)', g:'var(--g-todo)' },
+  Delayed:    { key:'Delayed',    label:'Delayed',     c:'var(--c-late)', g:'var(--g-late)' },
+  OnHold:     { key:'OnHold',     label:'On Hold',     c:'var(--c-hold)', g:'var(--g-hold)' }
+};
+/** Free-text status -> canonical key. */
+function canonStatus(s){
+  const t = uniqKey(s || '');
+  if (!t) return 'NotStarted';
+  if (/(complete|done|closed|finish|approved)/.test(t)) return 'Completed';
+  if (/(progress|ongoing|on going|wip|started|running)/.test(t) && !/not started/.test(t)) return 'InProgress';
+  if (/(hold|paused|blocked)/.test(t)) return 'OnHold';
+  if (/(delay|overdue|late)/.test(t)) return 'Delayed';
+  return 'NotStarted';
+}
+const PHASE_GRADS = ['var(--p1)','var(--p2)','var(--p3)','var(--p4)','var(--p5)'];
+const PHASE_SOLID = ['#7c3aed','#0ea5e9','#f97316','#d946ef','#14b8a6'];
+const splitList = s => String(s || '').split(/\s*(?:>>|→|->|\/|,|;|&|\band\b)\s*/i).map(x => x.trim()).filter(Boolean);
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const API = new URLSearchParams(location.search).get('api') || CONFIG.API_URL;
+const UI = {
+  zoom: CONFIG.DEFAULT_ZOOM, q: '', statuses: new Set(), phase: '', act: '', office: '', person: '',
+  from: null, to: null, showProj: true, showLinks: true, collapsed: new Set(), sel: null
+};
+try { const saved = JSON.parse(localStorage.getItem('rrGanttUI') || '{}');
+  if (saved.zoom) UI.zoom = saved.zoom; if (saved.showProj === false) UI.showProj = false; if (saved.showLinks === false) UI.showLinks = false;
+} catch(e) {}
+const saveUI = () => { try { localStorage.setItem('rrGanttUI', JSON.stringify({ zoom: UI.zoom, showProj: UI.showProj, showLinks: UI.showLinks })); } catch(e) {} };
+
+let RAW = null, M = null, VERSION = null, LAST_SYNC = null, CHANGED_AT = null, SIG = new Map();
+let syncState = 'connecting';
+
+/* =========================================================================
+   MODEL: turn the raw sheet rows into a tree + schedule
+   ========================================================================= */
+function buildModel(raw){
+  const S = raw.settings || {};
+  const defDur = Math.max(1, parseInt(S.DEFAULT_DURATION_DAYS, 10) || 7);
+  const anchor = dn(S.PROJECTION_START) ?? TODAY;
+
+  // ---- Activities
+  const acts = new Map(); const phases = [];
+  const ensurePhase = p => { if (!phases.includes(p)) phases.push(p); return phases.indexOf(p); };
+  (raw.activities || []).forEach(a => {
+    const code = String(a.code || '').trim(); if (!code) return;
+    const key = code.toUpperCase();
+    const phase = a.phase || 'Other';
+    acts.set(key, { type:'act', id:'A:' + key, code, key, name: a.name || code, phase, pIdx: ensurePhase(phase),
+      office: a.office || '', person: a.person || '', start: dn(a.start), end: dn(a.end),
+      deps: splitList(a.dependsOn).map(x => x.toUpperCase()), statusRaw: a.status || '', remarks: a.remarks || '',
+      extra: a.extra || {}, row: a._row, leaves: [], children: [], pending: [] });
+  });
+
+  // ---- Tasks (leaves)
+  const leaves = []; const byId = new Map();
+  (raw.tasks || []).forEach((t, i) => {
+    const key = String(t.activityCode || '—').trim().toUpperCase() || '—';
+    if (!acts.has(key)) acts.set(key, { type:'act', id:'A:' + key, code: t.activityCode || '—', key, name: t.activityCode || 'Unassigned',
+      phase:'Other', pIdx: ensurePhase('Other'), office:'', person:'', start:null, end:null, deps:[], statusRaw:'', remarks:'', extra:{}, leaves:[], children:[], pending:[] });
+    const a = acts.get(key);
+    const progRaw = (t.progress === '' || t.progress == null) ? null : Number(t.progress);
+    let st = canonStatus(t.status);
+    if (!t.status && progRaw === 100) st = 'Completed';
+    const L = { type:'task', id: String(t.id || ('ROW' + (t._row || i))), act: a, step: String(t.step || '').trim(), keyAction: t.keyAction || '', output: t.output || '',
+      office: t.office || '', person: t.person || '', start: dn(t.start), end: dn(t.end), dur: (t.duration > 0 ? Math.round(t.duration) : null),
+      progRaw, statusKey: st, statusRaw: t.status || '', deps: splitList(t.dependsOn), remarks: t.remarks || '', extra: t.extra || {}, row: t._row, order: i };
+    L.progress = progRaw != null ? clamp(progRaw, 0, 100) : (st === 'Completed' ? 100 : 0);
+    a.leaves.push(L); leaves.push(L); byId.set(L.id.toUpperCase(), L);
+  });
+
+  // ---- Group leaves into steps (consecutive rows with the same Step No)
+  acts.forEach(a => {
+    let cur = null; let n = 0;
+    a.leaves.forEach(L => {
+      if (!cur || cur.step !== L.step) {
+        cur = { type:'step', id: a.id + '|S' + (n++) + ':' + L.step, act: a, step: L.step, keyAction: L.keyAction, children: [] };
+        a.children.push(cur);
+      }
+      cur.children.push(L);
+    });
+    // collapse single-row steps into a plain leaf
+    a.children = a.children.map(s => {
+      if (s.children.length === 1) { const L = s.children[0]; L.title = L.keyAction || L.output || '(untitled)'; L.sub = L.keyAction ? L.output : ''; L.depth = 1; return L; }
+      s.title = s.keyAction || ('Step ' + s.step);
+      s.children.forEach(L => { L.title = L.output || L.keyAction || '(untitled)'; L.sub = (L.output && L.keyAction && L.keyAction !== s.keyAction) ? L.keyAction : ''; L.depth = 2; L.parentStep = s; });
+      return s;
+    });
+  });
+
+  // ---- Pending items
+  const pending = (raw.pending || []).map((p, i) => {
+    const key = String(p.activityCode || '').trim().toUpperCase();
+    const P = { type:'pending', id:'P:' + (p.sl || i + 1), sl: p.sl || i + 1, actKey: key, item: p.item || '', flow: p.flow || '', target: dn(p.target), remarks: p.remarks || '', extra: p.extra || {} };
+    if (acts.has(key)) acts.get(key).pending.push(P);
+    return P;
+  });
+
+  // ---- Schedule: real dates first; undated open tasks are PROJECTED sequentially
+  //      after their predecessor (previous row in the activity, explicit Depends On,
+  //      or the activities listed in the Activities sheet's "Depends On").
+  const state = new Map();
+  const leafAct = L => L.act;
+  function schedAct(a){
+    if (state.get(a.key) === 2 || state.get(a.key) === 1) return;
+    state.set(a.key, 1);
+    let depEnd = null;
+    a.deps.forEach(k => { const d = acts.get(k); if (d) { schedAct(d); if (d.e != null) depEnd = Math.max(depEnd ?? -Infinity, d.e); } });
+    // An activity that has already started (dated / in progress / completed rows) is not pushed out by its predecessors.
+    const started = a.start != null || a.leaves.some(L => L.start != null || L.end != null || L.statusKey === 'InProgress' || L.statusKey === 'Completed');
+    let cursor = started ? anchor : Math.max(anchor, depEnd != null ? depEnd + 1 : -Infinity);
+    a.leaves.forEach(L => {
+      let c = cursor;
+      L.deps.forEach(id => { const D = byId.get(id.toUpperCase()); if (D && D !== L) { if (D.act !== a) schedAct(leafAct(D)); if (D.e != null) c = Math.max(c, D.e + 1); } });
+      const dur = L.dur || defDur;
+      if (L.start != null && L.end != null) { L.s = Math.min(L.start, L.end); L.e = Math.max(L.start, L.end); L.kind = 'actual'; }
+      else if (L.end != null) { L.e = L.end; L.s = L.end - dur + 1; L.kind = 'est'; L.estNote = 'Start estimated (' + dur + ' days before end date)'; }
+      else if (L.start != null) { L.s = L.start; L.e = L.start + dur - 1; L.kind = 'est'; L.estNote = 'End estimated (' + dur + ' days after start date)'; }
+      else if (L.statusKey === 'Completed') { L.s = L.e = null; L.kind = 'none'; }
+      else { L.s = c; L.e = c + dur - 1; L.kind = 'proj'; }
+      if (L.kind === 'proj') cursor = L.e + 1;                               // chain projected rows
+      else if (L.kind !== 'none') cursor = Math.max(anchor, L.e + 1);          // real dates reset the chain
+    });
+    // activity span: explicit dates win, else span of children
+    const spans = a.leaves.filter(L => L.s != null);
+    if (a.start != null || a.end != null) {
+      a.s = a.start ?? (spans.length ? Math.min(...spans.map(L => L.s)) : a.end - defDur + 1);
+      a.e = a.end ?? (spans.length ? Math.max(...spans.map(L => L.e)) : a.start + defDur - 1);
+      a.kind = 'actual';
+    } else if (spans.length) {
+      a.s = Math.min(...spans.map(L => L.s)); a.e = Math.max(...spans.map(L => L.e));
+      a.kind = spans.every(L => L.kind === 'proj') ? 'proj' : 'mixed';
+    } else if (!a.leaves.length && canonStatus(a.statusRaw) !== 'Completed') {
+      a.s = cursor; a.e = cursor + defDur - 1; a.kind = 'proj';            // activity with no steps yet
+    } else { a.s = a.e = null; a.kind = 'none'; }
+    state.set(a.key, 2);
+  }
+  acts.forEach(schedAct);
+
+  // ---- Status / progress / overdue
+  leaves.forEach(L => {
+    const realEnd = L.end != null ? L.end : (L.kind === 'est' ? L.e : null);
+    L.overdue = L.statusKey !== 'Completed' && realEnd != null && realEnd < TODAY;
+    L.disp = (L.overdue || L.statusKey === 'Delayed') ? 'Delayed' : L.statusKey;
+  });
+  const agg = list => {
+    if (!list.length) return { progress: 0, disp: 'NotStarted' };
+    const progress = Math.round(list.reduce((s, L) => s + L.progress, 0) / list.length);
+    let disp = 'NotStarted';
+    if (list.every(L => L.statusKey === 'Completed')) disp = 'Completed';
+    else if (list.some(L => L.disp === 'Delayed')) disp = 'Delayed';
+    else if (list.some(L => L.statusKey === 'InProgress' || L.statusKey === 'Completed')) disp = 'InProgress';
+    else if (list.some(L => L.statusKey === 'OnHold')) disp = 'OnHold';
+    return { progress, disp };
+  };
+  acts.forEach(a => {
+    a.children.forEach(s => { if (s.type === 'step') { const g = agg(s.children); s.progress = g.progress; s.disp = g.disp;
+      const sp = s.children.filter(L => L.s != null); s.s = sp.length ? Math.min(...sp.map(L => L.s)) : null; s.e = sp.length ? Math.max(...sp.map(L => L.e)) : null;
+      s.kind = sp.length && sp.every(L => L.kind === 'proj') ? 'proj' : 'mixed'; } });
+    const g = agg(a.leaves);
+    a.progress = g.progress;
+    a.disp = a.statusRaw ? canonStatus(a.statusRaw) : g.disp;
+    if (a.disp !== 'Completed' && a.end != null && a.end < TODAY) { a.disp = 'Delayed'; a.overdue = true; }
+    if (!a.leaves.length && a.disp === 'Completed') a.progress = 100;
+  });
+
+  // ---- Filter option lists (case-insensitive de-dupe; most frequent spelling wins)
+  const optionList = (getter) => {
+    const m = new Map();
+    const add = v => splitList(v).forEach(x => { const k = uniqKey(x); if (!k) return; const e = m.get(k) || { k, counts: {} }; e.counts[x] = (e.counts[x] || 0) + 1; m.set(k, e); });
+    leaves.forEach(L => add(getter(L))); acts.forEach(a => add(getter(a)));
+    return [...m.values()].map(e => ({ k: e.k, label: Object.entries(e.counts).sort((x, y) => y[1] - x[1])[0][0] })).sort((a, b) => a.label.localeCompare(b.label));
+  };
+  return { settings: S, defDur, anchor, acts: [...acts.values()], actMap: acts, leaves, byId, pending, phases,
+    offices: optionList(x => x.office), persons: optionList(x => x.person) };
+}
+
+/* =========================================================================
+   FILTERING -> visible rows
+   ========================================================================= */
+function leafMatches(L){
+  const a = L.act;
+  if (UI.statuses.size && !UI.statuses.has(L.disp)) return false;
+  if (UI.phase && a.phase !== UI.phase) return false;
+  if (UI.act && a.key !== UI.act) return false;
+  if (UI.office && !splitList(L.office).some(x => uniqKey(x) === UI.office)) return false;
+  if (UI.person && !splitList(L.person).some(x => uniqKey(x) === UI.person)) return false;
+  if (UI.from != null || UI.to != null) {
+    if (L.s == null || (L.kind === 'proj' && !UI.showProj)) return false;
+    if (UI.from != null && L.e < UI.from) return false;
+    if (UI.to != null && L.s > UI.to) return false;
+  }
+  if (UI.q) {
+    const hay = [L.id, L.title, L.sub, L.keyAction, L.output, L.office, L.person, L.remarks, L.statusRaw, STATUS[L.disp].label, a.code, a.name, a.phase, ...Object.values(L.extra)].join(' ').toLowerCase();
+    if (!UI.q.split(/\s+/).every(w => hay.includes(w))) return false;
+  }
+  return true;
+}
+function actMatchesSelf(a){
+  if (UI.statuses.size && !UI.statuses.has(a.disp)) return false;
+  if (UI.phase && a.phase !== UI.phase) return false;
+  if (UI.act && a.key !== UI.act) return false;
+  if (UI.office && !splitList(a.office).some(x => uniqKey(x) === UI.office)) return false;
+  if (UI.person && !splitList(a.person).some(x => uniqKey(x) === UI.person)) return false;
+  if ((UI.from != null || UI.to != null) && (a.s == null || (UI.from != null && a.e < UI.from) || (UI.to != null && a.s > UI.to))) return false;
+  if (UI.q) { const hay = [a.code, a.name, a.phase, a.office, a.person, a.remarks, ...a.pending.map(p => p.item)].join(' ').toLowerCase(); if (!UI.q.split(/\s+/).every(w => hay.includes(w))) return false; }
+  return true;
+}
+function visibleRows(){
+  const rows = []; const matched = [];
+  M.acts.forEach(a => {
+    const hits = a.leaves.filter(leafMatches);
+    matched.push(...hits);
+    const show = hits.length || ((!a.leaves.length || UI.q) && actMatchesSelf(a));
+    if (!show) return;
+    rows.push({ node: a, lvl: 0 });
+    if (UI.collapsed.has(a.id)) return;
+    const hitSet = new Set(hits);
+    a.children.forEach(ch => {
+      if (ch.type === 'task') { if (hitSet.has(ch)) rows.push({ node: ch, lvl: 1 }); return; }
+      const sub = ch.children.filter(L => hitSet.has(L));
+      if (!sub.length) return;
+      rows.push({ node: ch, lvl: 1 });
+      if (!UI.collapsed.has(ch.id)) sub.forEach(L => rows.push({ node: L, lvl: 2 }));
+    });
+  });
+  return { rows, matched };
+}
+
+/* =========================================================================
+   TIME SCALE
+   ========================================================================= */
+const ZOOM = { day: 42, week: 15, month: 4.6, quarter: 1.7 };   // px per day
+function ymd(n){ const d = dnDate(n); return [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCDay()]; }
+const monthStart = (y, m) => Math.round(Date.UTC(y, m, 1) / DAY);
+function computeRange(rows){
+  const pts = [TODAY];
+  rows.forEach(r => { const n = r.node; if (n.s != null && (n.kind !== 'proj' || UI.showProj)) { pts.push(n.s, n.e); } if (n.pending) n.pending.forEach(p => p.target != null && pts.push(p.target)); });
+  if (UI.from != null) pts.push(UI.from); if (UI.to != null) pts.push(UI.to);
+  let a = UI.from ?? Math.min(...pts), b = UI.to ?? Math.max(...pts);
+  const pad = { day: 4, week: 10, month: 20, quarter: 45 }[UI.zoom];
+  a -= pad; b += pad;
+  // snap start to a natural boundary
+  const [y, m] = ymd(a);
+  if (UI.zoom === 'day' || UI.zoom === 'week') { const wd = (ymd(a)[3] + 6) % 7; a -= wd; }
+  else if (UI.zoom === 'month') a = monthStart(y, m);
+  else a = monthStart(y, Math.floor(m / 3) * 3);
+  // make sure the timeline fills the visible width
+  const avail = Math.max(300, $('#gwrap').clientWidth - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--left')));
+  const ppd = ZOOM[UI.zoom];
+  b = Math.max(b, a + Math.ceil(avail / ppd));
+  return { start: a, end: b, ppd, width: Math.ceil((b - a + 1) * ppd) };
+}
+function scaleTiers(R){
+  const t1 = [], t2 = [], lines = [], shades = [];
+  const x = n => (n - R.start) * R.ppd;
+  const z = UI.zoom;
+  // tier 1: months (day/week) or years (month/quarter)
+  let [y, m] = ymd(R.start);
+  if (z === 'day' || z === 'week') {
+    for (let s = monthStart(y, m); s <= R.end; ) { const [yy, mm] = ymd(s); const e = monthStart(yy, mm + 1); t1.push({ x: x(Math.max(s, R.start)), w: x(Math.min(e, R.end + 1)) - x(Math.max(s, R.start)), label: MON[mm] + ' ' + yy }); lines.push({ x: x(s), major: true }); s = e; }
+  } else {
+    for (let s = Math.round(Date.UTC(y, 0, 1) / DAY); s <= R.end; ) { const yy = ymd(s)[0]; const e = Math.round(Date.UTC(yy + 1, 0, 1) / DAY); t1.push({ x: x(Math.max(s, R.start)), w: x(Math.min(e, R.end + 1)) - x(Math.max(s, R.start)), label: String(yy) }); lines.push({ x: x(s), major: true }); s = e; }
+  }
+  // tier 2
+  if (z === 'day') {
+    for (let s = R.start; s <= R.end; s++) { const [, , d, wd] = ymd(s); const we = wd === 0 || wd === 6;
+      t2.push({ x: x(s), w: R.ppd, label: d + '<br><span style="font-size:9px;opacity:.7">' + 'SMTWTFS'[wd] + '</span>', cls: (we ? 'wkend' : '') + (s === TODAY ? ' today' : '') });
+      if (we) shades.push({ x: x(s), w: R.ppd }); lines.push({ x: x(s) }); }
+  } else if (z === 'week') {
+    for (let s = R.start; s <= R.end; s += 7) { const [, mm, d] = ymd(s); t2.push({ x: x(s), w: 7 * R.ppd, label: d + ' ' + MON[mm], cls: (TODAY >= s && TODAY < s + 7) ? 'today' : '' }); lines.push({ x: x(s) }); }
+  } else if (z === 'month') {
+    for (let s = monthStart(y, m); s <= R.end; ) { const [yy, mm] = ymd(s); const e = monthStart(yy, mm + 1); t2.push({ x: x(s), w: (e - s) * R.ppd, label: MON[mm], cls: (TODAY >= s && TODAY < e) ? 'today' : '' }); lines.push({ x: x(s) }); s = e; }
+  } else {
+    for (let s = monthStart(y, Math.floor(m / 3) * 3); s <= R.end; ) { const [yy, mm] = ymd(s); const e = monthStart(yy, mm + 3); t2.push({ x: x(s), w: (e - s) * R.ppd, label: 'Q' + (mm / 3 + 1), cls: (TODAY >= s && TODAY < e) ? 'today' : '' }); lines.push({ x: x(s) }); s = e; }
+  }
+  return { t1, t2, lines, shades };
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+let R = null, ROWS = [];
+function render(opts = {}){
+  if (!M) return;
+  const wrap = $('#gwrap'), canvas = $('#gcanvas');
+  const prev = { left: wrap.scrollLeft, top: wrap.scrollTop, center: R ? R.start + (wrap.scrollLeft + (wrap.clientWidth - leftW()) / 2) / R.ppd : null };
+  const { rows, matched } = visibleRows();
+  ROWS = rows;
+  renderKpis(matched);
+  renderPhases();
+  renderPending();
+  $('#ganttMeta').textContent = `${matched.length} of ${M.leaves.length} tasks · ${rows.filter(r => r.lvl === 0).length} activities`;
+
+  if (!rows.length) { canvas.innerHTML = '<div class="empty"><b>No tasks match the current filters</b>Try clearing the search or filters.</div>'; R = null; return; }
+
+  R = computeRange(rows);
+  const T = scaleTiers(R);
+  const x = n => (n - R.start) * R.ppd;
+  const rowH = rowHeight();
+  const H = rows.length * rowH;
+  const animate = !!opts.animate;
+  const flash = opts.flash || new Set();
+
+  let h = '';
+  // header
+  h += `<div class="ghead"><div class="gh-left"><span>Activity / Task</span><span class="h-owner">Owner</span><span class="h-status">Status</span><span class="h-pct" style="text-align:right">%</span></div>
+        <div class="gh-time" style="width:${R.width}px"><div class="tier t1">${T.t1.map(c => `<div class="tcell" style="left:${c.x}px;width:${c.w}px">${c.label}</div>`).join('')}</div>
+        <div class="tier t2">${T.t2.map(c => `<div class="tcell ${c.cls || ''}" style="left:${c.x}px;width:${c.w}px;${UI.zoom === 'day' ? 'line-height:1;flex-direction:column;text-align:center' : ''}">${c.label}</div>`).join('')}</div></div></div>`;
+  // body
+  h += `<div class="gbody" style="height:${H}px">`;
+  h += `<div class="glayer" style="left:${leftW()}px;width:${R.width}px">${T.shades.map(s => `<div class="gshade" style="left:${s.x}px;width:${s.w}px"></div>`).join('')}${T.lines.map(l => `<div class="gline${l.major ? ' major' : ''}" style="left:${l.x}px"></div>`).join('')}
+           ${TODAY >= R.start && TODAY <= R.end ? `<div class="today-line" style="left:${x(TODAY) + R.ppd / 2 - 1}px"></div>` : ''}</div>`;
+  h += `<svg class="glinks" id="glinks" style="left:${leftW()}px" width="${R.width}" height="${H}"></svg>`;
+  rows.forEach((r, i) => { h += rowHtml(r, i, x, animate, flash); });
+  h += `</div>`;
+  canvas.style.width = (leftW() + R.width) + 'px';
+  canvas.innerHTML = h;
+  if (opts.fx) { canvas.classList.remove('fx'); void canvas.offsetWidth; canvas.classList.add('fx'); }
+  drawLinks(x, rowH);
+
+  // scroll handling
+  if (opts.scrollTo === 'today') scrollToDay(TODAY, opts.smooth);
+  else if (opts.keepCenter && prev.center != null) wrap.scrollLeft = (prev.center - R.start) * R.ppd - (wrap.clientWidth - leftW()) / 2;
+  else { wrap.scrollLeft = prev.left; }
+  if (!opts.resetTop) wrap.scrollTop = prev.top;
+}
+const leftW = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--left')) || 470;
+const rowHeight = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row')) || 42;
+function scrollToDay(d, smooth){
+  const wrap = $('#gwrap'); if (!R) return;
+  const left = (d - R.start) * R.ppd - (wrap.clientWidth - leftW()) * 0.35;
+  wrap.scrollTo({ left: Math.max(0, left), behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function rowHtml(r, i, x, animate, flash){
+  const n = r.node, a = n.type === 'act' ? n : n.act;
+  const pc = PHASE_GRADS[a.pIdx % PHASE_GRADS.length];
+  const st = STATUS[n.disp] || STATUS.NotStarted;
+  const hasKids = n.type === 'act' ? n.children.length > 0 : n.type === 'step';
+  const closed = UI.collapsed.has(n.id);
+  const code = n.type === 'act' ? a.code : n.type === 'step' ? 'S' + n.step : (n.step ? n.step : '');
+  const title = n.type === 'act' ? n.name : n.title;
+  const sub = n.type === 'act' ? [a.office, a.person].filter(Boolean).join(' · ') : n.type === 'step' ? `${n.children.length} deliverables` : n.sub;
+  const owner = n.type === 'act' ? (a.person || a.office) : n.type === 'step' ? uniqueJoin(n.children.map(L => L.person || L.office)) : (n.person || n.office);
+  const cls = ['grow', animate ? 'anim' : '', UI.sel === n.id ? 'sel' : '', flash.has(n.id) ? 'flash' : ''].join(' ');
+  let h = `<div class="${cls}" data-id="${esc(n.id)}" style="--i:${Math.min(i, 60)};--pc:${pc}">`;
+  h += `<div class="gl lvl${r.lvl}"><div class="cell-task" style="--lvl:${r.lvl}">${r.lvl === 0 ? '<span class="stripe"></span>' : ''}
+          <button class="caret ${hasKids ? '' : 'ph'} ${closed ? 'closed' : ''}" data-toggle="${esc(n.id)}" aria-label="Toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></button>
+          ${code ? `<span class="code">${esc(code)}</span>` : ''}<span class="mdot s-${st.key}"></span>
+          <span class="tname"><span class="t1x" title="${esc(title)}">${esc(title)}</span>${sub ? `<span class="t2x">${esc(sub)}</span>` : ''}</span></div>
+        <div class="cell-owner" title="${esc(owner)}">${esc(owner || '—')}</div>
+        <div class="cell-status"><span class="badge s-${st.key}">${st.label}</span></div>
+        <div class="cell-pct">${n.progress != null ? n.progress + '%' : ''}</div></div>`;
+  h += `<div class="gt" style="width:${R.width}px">`;
+  const show = n.s != null && (n.kind !== 'proj' || UI.showProj);
+  if (show) {
+    const left = x(n.s), w = Math.max((n.e - n.s + 1) * R.ppd, 6);
+    if (n.type === 'task') {
+      const k = n.kind === 'proj' ? ' proj' : n.kind === 'est' ? ' est' : '';
+      h += `<div class="bar st-${st.key}${k}${n.overdue ? ' overdue' : ''}" data-bar="${esc(n.id)}" style="left:${left}px;width:${w}px">
+              <span class="fill" style="width:${n.progress}%"></span>${w > 48 ? `<span class="btxt">${n.progress}%</span>` : ''}</div>`;
+      h += `<span class="blabel${n.overdue ? ' warn' : ''}" style="left:${left + w + 8}px">${n.overdue ? '⚠ ' : ''}${esc(title)}</span>`;
+    } else {
+      const proj = n.kind === 'proj' ? ' allproj' : '';
+      h += `<div class="sbar${n.type === 'step' ? ' step' : ''}${proj}" data-bar="${esc(n.id)}" style="left:${left}px;width:${w}px"><span class="fill" style="width:${n.progress}%"></span></div>`;
+      if (n.type === 'act') h += `<span class="blabel" style="left:${left + w + 10}px;font-weight:800;color:var(--ink)">${esc(a.code)} · ${n.progress}%${n.overdue ? ' <span style="color:#e11d48">⚠ overdue</span>' : ''}</span>`;
+    }
+  } else if (n.type === 'task' && n.kind === 'none') {
+    h += `<span class="nodate" style="left:${Math.max(8, x(TODAY) + R.ppd + 8)}px"><i>✓</i>Completed · no dates recorded</span>`;
+  }
+  if (n.type === 'act') n.pending.forEach(p => { if (p.target != null && p.target >= R.start && p.target <= R.end) h += `<div class="ms${p.target < TODAY ? ' late' : ''}" data-pend="${esc(p.id)}" style="left:${x(p.target) + R.ppd / 2 - 8}px"></div>`; });
+  h += `</div></div>`;
+  return h;
+}
+function uniqueJoin(list){ const s = new Map(); list.forEach(v => splitList(v).forEach(x => { const k = uniqKey(x); if (!s.has(k)) s.set(k, x); })); const arr = [...s.values()]; return arr.length > 2 ? arr.slice(0, 2).join(', ') + ' +' + (arr.length - 2) : arr.join(', '); }
+
+/** Dependency arrows between visible bars (activity "Depends On" + task "Depends On"). */
+function drawLinks(x, rowH){
+  const svg = $('#glinks'); if (!svg) return;
+  if (!UI.showLinks) { svg.innerHTML = ''; return; }
+  const idx = new Map(); ROWS.forEach((r, i) => idx.set(r.node.id, i));
+  const pairs = [];
+  ROWS.forEach(r => {
+    const n = r.node;
+    if (n.type === 'act') n.deps.forEach(k => { const d = M.actMap.get(k); if (d && idx.has(d.id)) pairs.push([d, n]); });
+    if (n.type === 'task') n.deps.forEach(id => { const d = M.byId.get(id.toUpperCase()); if (d && idx.has(d.id)) pairs.push([d, n]); });
+  });
+  const vis = n => n.s != null && (n.kind !== 'proj' || UI.showProj);
+  // only forward links (successor starts after predecessor ends) are drawn, to keep the chart readable
+  svg.innerHTML = pairs.filter(([a, b]) => vis(a) && vis(b) && b.s > a.e).map(([a, b]) => {
+    const x1 = x(a.e + 1), y1 = idx.get(a.id) * rowH + rowH / 2, x2 = x(b.s), y2 = idx.get(b.id) * rowH + rowH / 2;
+    const mx = x2 - 10 >= x1 + 6 ? x1 + Math.max(6, (x2 - x1) / 2) : x1 + 10;
+    const d = x2 - 10 >= x1 + 6 ? `M${x1} ${y1} H${mx} V${y2} H${x2 - 2}` : `M${x1} ${y1} H${x1 + 10} V${y2 - rowH / 2 + 4} H${x2 - 12} V${y2} H${x2 - 2}`;
+    return `<path data-from="${esc(a.id)}" data-to="${esc(b.id)}" d="${d}" marker-end="url(#arrow)"/>`;
+  }).join('');
+}
+
+/* ---------- KPI cards ---------- */
+const ICONS = {
+  total:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  done:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></svg>',
+  prog:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
+  late:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
+  todo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="4"/></svg>'
+};
+let kpiBuilt = false;
+function renderKpis(list){
+  const total = list.length;
+  const c = k => list.filter(L => L.disp === k).length;
+  const done = c('Completed'), prog = c('InProgress'), late = c('Delayed'), todo = c('NotStarted') + c('OnHold');
+  const pct = total ? Math.round(list.reduce((s, L) => s + L.progress, 0) / total) : 0;
+  const dated = list.filter(L => L.kind === 'actual' || L.kind === 'est').length;
+  const cards = [
+    { id:'total', label:'Total tasks', val: total, sub: `${dated} with dates · ${M.acts.length} activities`, accent:'var(--g-brand)', sh:'rgba(124,58,237,.5)', icon: ICONS.total },
+    { id:'done', label:'Completed', val: done, sub: total ? Math.round(done / total * 100) + '% of tasks' : '—', accent:'var(--g-done)', sh:'rgba(16,185,129,.5)', icon: ICONS.done, f:'Completed' },
+    { id:'prog', label:'In progress', val: prog, sub:'Active right now', accent:'var(--g-prog)', sh:'rgba(79,70,229,.5)', icon: ICONS.prog, f:'InProgress' },
+    { id:'late', label:'Delayed', val: late, sub:'Past end date, not done', accent:'var(--g-late)', sh:'rgba(244,63,94,.5)', icon: ICONS.late, f:'Delayed' },
+    { id:'todo', label:'Not started', val: todo, sub:'Incl. on hold', accent:'linear-gradient(90deg,#94a3b8,#a5b4fc)', sh:'rgba(100,116,139,.4)', icon: ICONS.todo, f:'NotStarted' }
+  ];
+  const box = $('#kpis');
+  if (!kpiBuilt) {
+    box.innerHTML = cards.map((k, i) => `<div class="kpi" data-kpi="${k.id}" ${k.f ? `data-f="${k.f}" style="cursor:pointer;--k:${i};--accent:${k.accent};--shadow-c:${k.sh}"` : `style="--k:${i};--accent:${k.accent};--shadow-c:${k.sh}"`}>
+        <div class="k-top"><span class="k-label">${k.label}</span><span class="k-icon">${k.icon}</span></div>
+        <div class="k-val" data-v="0">0</div><div class="k-sub"></div></div>`).join('') +
+      `<div class="kpi ring" data-kpi="pct" style="--k:5;--accent:var(--g-brand)"><svg class="ringsvg" viewBox="0 0 80 80"><circle class="track" cx="40" cy="40" r="32"/>
+        <circle class="val" cx="40" cy="40" r="32" stroke-dasharray="201.06" stroke-dashoffset="201.06" transform="rotate(-90 40 40)"/><text x="40" y="46" text-anchor="middle" id="ringTxt">0%</text></svg>
+        <div class="k-body"><div class="k-label" style="font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em">Overall complete</div>
+        <div class="k-sub" id="ringSub" style="margin-top:6px"></div></div></div>`;
+    kpiBuilt = true; attachTilt(box.querySelectorAll('.kpi'));
+  }
+  cards.forEach(k => { const el = box.querySelector(`[data-kpi="${k.id}"]`); countTo(el.querySelector('.k-val'), k.val); el.querySelector('.k-sub').textContent = k.sub;
+    if (k.f) el.style.outline = UI.statuses.size === 1 && UI.statuses.has(k.f) ? '2px solid #c7d2fe' : 'none'; });
+  const ring = box.querySelector('.ringsvg .val');
+  requestAnimationFrame(() => ring.style.strokeDashoffset = 201.06 * (1 - pct / 100));
+  countTo($('#ringTxt'), pct, '%');
+  $('#ringSub').textContent = `Average progress across ${total} task${total === 1 ? '' : 's'}`;
+}
+function countTo(el, to, suffix = ''){
+  const from = +el.dataset.v || 0; el.dataset.v = to;
+  if (from === to) { el.textContent = to + suffix; return; }
+  const t0 = performance.now(), dur = 700;
+  const step = t => { const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = Math.round(from + (to - from) * e) + suffix; if (p < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function attachTilt(nodes){
+  if (isTouch || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  nodes.forEach(el => {
+    el.addEventListener('mousemove', e => { const r = el.getBoundingClientRect(); const px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
+      el.style.transform = `rotateX(${(-py * 8).toFixed(2)}deg) rotateY(${(px * 10).toFixed(2)}deg) translateY(-3px)`; });
+    el.addEventListener('mouseleave', () => el.style.transform = '');
+  });
+}
+
+/* ---------- Phase strip ---------- */
+function renderPhases(){
+  $('#phases').innerHTML = M.phases.map((p, i) => {
+    const L = M.leaves.filter(t => t.act.phase === p);
+    const acts = M.acts.filter(a => a.phase === p);
+    const pct = L.length ? Math.round(L.reduce((s, t) => s + t.progress, 0) / L.length) : Math.round(acts.reduce((s, a) => s + a.progress, 0) / Math.max(1, acts.length));
+    const done = L.filter(t => t.statusKey === 'Completed').length, late = L.filter(t => t.disp === 'Delayed').length;
+    return `<div class="phase ${UI.phase === p ? 'on' : ''}" data-phase="${esc(p)}"><div class="ph-top"><span>${esc(p)}</span><span>${pct}%</span></div>
+      <div class="ph-bar"><i style="width:${pct}%;background:${PHASE_GRADS[i % PHASE_GRADS.length]}"></i></div>
+      <div class="ph-sub">${acts.length} activities · ${done}/${L.length} tasks done${late ? ` · <span style="color:#e11d48">${late} delayed</span>` : ''}</div></div>`;
+  }).join('');
+}
+
+/* ---------- Pending cards ---------- */
+function renderPending(){
+  const list = M.pending.filter(p => !UI.q || [p.item, p.flow, p.remarks, p.actKey].join(' ').toLowerCase().includes(UI.q));
+  $('#pendMeta').textContent = `${M.pending.length} item${M.pending.length === 1 ? '' : 's'} from the Pending sheet`;
+  $('#pending').innerHTML = list.length ? list.map((p, i) => {
+    const a = M.actMap.get(p.actKey);
+    let due = '<span class="pc-due none">No target date</span>';
+    if (p.target != null) { const d = p.target - TODAY; due = `<span class="pc-due ${d < 0 ? 'late' : ''}">${fmtD(p.target)} · ${d < 0 ? Math.abs(d) + 'd overdue' : d === 0 ? 'today' : 'in ' + d + 'd'}</span>`; }
+    const steps = p.flow.split(/\s*(?:->|→|>>|-(?!\s*\d)|–)\s*/).map(s => s.trim()).filter(Boolean);
+    return `<article class="pcard" style="--k:${i}" data-pcard="${esc(p.id)}"><div class="pc-top"><div style="display:flex;gap:10px;align-items:center"><span class="pc-num">${esc(p.sl)}</span>
+        <span class="code" title="${esc(a ? a.name : '')}">${esc(p.actKey || '—')}</span></div>${due}</div>
+      <h4>${esc(p.item)}</h4>${steps.length ? `<div class="flow">${steps.map(s => `<span>${esc(s)}</span>`).join('<em>➜</em>')}</div>` : ''}
+      ${p.remarks && p.remarks !== (p.target != null ? fmtSlash(p.target) : '') ? `<div class="pc-rem">${esc(p.remarks)}</div>` : ''}</article>`;
+  }).join('') : '<div class="empty" style="grid-column:1/-1">No pending items match.</div>';
+  attachTilt(document.querySelectorAll('.pcard'));
+}
+const fmtSlash = n => { const d = dnDate(n); return `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth() + 1).padStart(2,'0')}/${d.getUTCFullYear()}`; };
+
+/* ---------- Filter controls ---------- */
+function fillFilters(){
+  const counts = {}; M.leaves.forEach(L => counts[L.disp] = (counts[L.disp] || 0) + 1);
+  $('#statusChips').innerHTML = Object.values(STATUS).map(s => `<button class="chip ${UI.statuses.has(s.key) ? 'on' : ''}" data-st="${s.key}" style="--c:${s.c};--g:${s.g}"><i></i>${s.label}<b>${counts[s.key] || 0}</b></button>`).join('');
+  const opt = (sel, items, cur, all) => { $(sel).innerHTML = `<option value="">${all}</option>` + items.map(o => `<option value="${esc(o.v)}" ${o.v === cur ? 'selected' : ''}>${esc(o.l)}</option>`).join(''); };
+  opt('#fPhase', M.phases.map(p => ({ v: p, l: p })), UI.phase, 'All phases');
+  opt('#fAct', M.acts.map(a => ({ v: a.key, l: a.code + ' · ' + (a.name.length > 46 ? a.name.slice(0, 44) + '…' : a.name) })), UI.act, 'All activities');
+  opt('#fOffice', M.offices.map(o => ({ v: o.k, l: o.label })), UI.office, 'All offices');
+  opt('#fPerson', M.persons.map(o => ({ v: o.k, l: o.label })), UI.person, 'All owners');
+}
+
+/* =========================================================================
+   TOOLTIP + SIDE PANEL
+   ========================================================================= */
+const tip = $('#tip');
+function nodeById(id){
+  if (!id) return null;
+  if (id.startsWith('P:')) return M.pending.find(p => p.id === id);
+  if (id.startsWith('A:') && !id.includes('|')) return M.acts.find(a => a.id === id);
+  if (id.includes('|S')) { for (const a of M.acts) for (const c of a.children) if (c.id === id) return c; }
+  return M.byId.get(id.toUpperCase()) || M.leaves.find(L => L.id === id);
+}
+function tipHtml(n){
+  if (n.type === 'pending') { const d = n.target != null ? n.target - TODAY : null;
+    return `<h4>Pending #${esc(n.sl)} · ${esc(n.item)}</h4><div class="row">Activity<b>${esc(n.actKey)}</b></div><div class="row">Target<b class="${d < 0 ? 'warn' : ''}">${fmtD(n.target)}${d != null ? ` (${d < 0 ? Math.abs(d) + 'd overdue' : 'in ' + d + 'd'})` : ''}</b></div>`; }
+  const st = STATUS[n.disp] || STATUS.NotStarted;
+  const title = n.type === 'act' ? `${n.code} · ${n.name}` : n.title;
+  const owner = n.type === 'act' ? n.person || n.office : n.type === 'step' ? uniqueJoin(n.children.map(L => L.person || L.office)) : [n.office, n.person].filter(Boolean).join(' · ');
+  let h = `<h4>${esc(title)}</h4>`;
+  if (n.type === 'task' && n.sub) h += `<div class="row" style="display:block;color:var(--ink-3)">${esc(n.sub)}</div>`;
+  h += `<div class="row">Status<b><span class="badge s-${st.key}">${st.label}</span></b></div>`;
+  if (owner) h += `<div class="row">Owner<b>${esc(owner)}</b></div>`;
+  h += `<div class="row">Dates<b>${n.s != null ? fmtD(n.s) + ' → ' + fmtD(n.e) : 'No dates'}</b></div>`;
+  if (n.s != null) h += `<div class="row">Duration<b>${n.e - n.s + 1} days</b></div>`;
+  h += `<div class="pbar"><i style="width:${n.progress}%"></i></div><div class="row">Progress<b>${n.progress}%</b></div>`;
+  if (n.overdue) h += `<div class="note warn">⚠ Overdue by ${TODAY - (n.end ?? n.e)} days</div>`;
+  if (n.kind === 'proj') h += `<div class="note">Projected — no dates in the sheet yet</div>`;
+  if (n.kind === 'est') h += `<div class="note">${esc(n.estNote)}</div>`;
+  return h;
+}
+function showTip(n, e){ tip.innerHTML = tipHtml(n); tip.classList.add('show'); moveTip(e); }
+function moveTip(e){ const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight; let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - 8) x = e.clientX - w - pad; if (y + h > innerHeight - 8) y = e.clientY - h - pad; tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px'; }
+const hideTip = () => tip.classList.remove('show');
+
+function dl(rows){ return `<dl class="dl">${rows.filter(r => r[1] !== '' && r[1] != null).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`; }
+function openPanel(id){
+  const n = nodeById(id); if (!n) return;
+  UI.sel = id; hideTip();
+  document.querySelectorAll('.grow.sel').forEach(r => r.classList.remove('sel'));
+  const rowEl = document.querySelector(`.grow[data-id="${CSS.escape(id)}"]`); if (rowEl) rowEl.classList.add('sel');
+  const P = $('#panel'); let head = '', body = '';
+  if (n.type === 'pending') {
+    head = `<div class="p-code">PENDING #${esc(n.sl)} · ${esc(n.actKey)}</div><h3>${esc(n.item)}</h3>`;
+    body = dl([['Activity', esc(n.actKey + (M.actMap.get(n.actKey) ? ' · ' + M.actMap.get(n.actKey).name : ''))], ['Target date', fmtD(n.target)], ['Process flow', esc(n.flow)], ['Remarks', esc(n.remarks)], ...Object.entries(n.extra).map(([k, v]) => [k, esc(v)])]);
+  } else {
+    const st = STATUS[n.disp] || STATUS.NotStarted;
+    const a = n.type === 'act' ? n : n.act;
+    const title = n.type === 'act' ? n.name : n.type === 'step' ? n.title : n.title;
+    const codeLine = n.type === 'act' ? `${esc(a.code)} · ${esc(a.phase)}` : n.type === 'step' ? `${esc(a.code)} · STEP ${esc(n.step)}` : `${esc(n.id)} · ${esc(a.code)} · STEP ${esc(n.step || '—')}`;
+    head = `<div class="p-code">${codeLine}</div><h3>${esc(title)}</h3><span class="badge s-${st.key}">${st.label}</span>`;
+    body += `<div class="p-prog"><div class="pb"><i style="width:0%" data-w="${n.progress}"></i></div><b>${n.progress}%</b></div>`;
+    if (n.overdue) body += `<div class="alert late">⚠ Overdue — end date ${fmtD(n.end ?? n.e)} passed ${TODAY - (n.end ?? n.e)} days ago and the task is not completed.</div>`;
+    if (n.kind === 'proj') body += `<div class="alert proj">Projected bar: this ${n.type === 'act' ? 'activity' : 'task'} has no dates in the sheet. It is placed after its predecessor using the default duration of ${M.defDur} days. Add Start/End dates in the sheet to fix it.</div>`;
+    if (n.kind === 'est') body += `<div class="alert proj">${esc(n.estNote)}.</div>`;
+    if (n.type === 'task') {
+      body += dl([['Activity', esc(a.code + ' · ' + a.name)], ['Step', esc(n.step)], ['Key action', esc(n.keyAction)], ['Output / deliverable', esc(n.output)],
+        ['Responsible office', esc(n.office)], ['Responsible person', esc(n.person)], ['Start date', n.start != null ? fmtD(n.start) : '<span style="color:var(--ink-3)">not set</span>'],
+        ['End date', n.end != null ? fmtD(n.end) : '<span style="color:var(--ink-3)">not set</span>'], ['Shown on chart', n.s != null ? fmtD(n.s) + ' → ' + fmtD(n.e) + ` (${n.e - n.s + 1}d)` : '—'],
+        ['Duration (days)', n.dur ?? ''], ['Status in sheet', esc(n.statusRaw || '(blank)')], ['Depends on', esc(n.deps.join(', '))], ['Remarks', esc(n.remarks)],
+        ...Object.entries(n.extra).map(([k, v]) => [k, esc(v)]), ['Sheet row', n.row ? 'Tasks!' + n.row : '']]);
+    } else {
+      const kids = n.type === 'act' ? n.leaves : n.children;
+      body += dl(n.type === 'act' ? [['Phase', esc(a.phase)], ['Responsible office', esc(a.office)], ['Responsible person', esc(a.person)], ['Timeline', n.s != null ? fmtD(n.s) + ' → ' + fmtD(n.e) : '—'],
+        ['Depends on', esc(a.deps.join(', '))], ['Remarks', esc(a.remarks)], ...Object.entries(a.extra).map(([k, v]) => [k, esc(v)])] :
+        [['Activity', esc(a.code + ' · ' + a.name)], ['Timeline', n.s != null ? fmtD(n.s) + ' → ' + fmtD(n.e) : '—']]);
+      const cnt = k => kids.filter(L => L.disp === k).length;
+      body += `<div class="p-sec"><h5>${kids.length} tasks · ${cnt('Completed')} done · ${cnt('InProgress')} in progress · ${cnt('Delayed')} delayed</h5>` +
+        kids.map(L => `<div class="mini" data-open="${esc(L.id)}"><span class="badge s-${STATUS[L.disp].key}" style="padding:2px 6px">${L.progress}%</span><span title="${esc(L.title)}">${esc(L.title)}</span></div>`).join('') + `</div>`;
+      if (n.type === 'act' && n.pending.length) body += `<div class="p-sec"><h5>Pending items</h5>` + n.pending.map(p => `<div class="mini" data-open="${esc(p.id)}"><span class="pc-due ${p.target != null && p.target < TODAY ? 'late' : p.target == null ? 'none' : ''}" style="flex:none">${p.target != null ? fmtD(p.target, false) : '—'}</span><span>${esc(p.item)}</span></div>`).join('') + `</div>`;
+    }
+  }
+  P.innerHTML = `<div class="p-head">${head}<button class="x" id="pClose" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="p-body">${body}</div>`;
+  P.classList.add('show'); $('#scrim').classList.add('show'); P.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => P.querySelectorAll('[data-w]').forEach(i => i.style.width = i.dataset.w + '%'));
+  highlightLinks(id);
+}
+function closePanel(){ $('#panel').classList.remove('show'); $('#scrim').classList.remove('show'); $('#panel').setAttribute('aria-hidden', 'true'); UI.sel = null;
+  document.querySelectorAll('.grow.sel').forEach(r => r.classList.remove('sel')); highlightLinks(null); }
+function highlightLinks(id){ document.querySelectorAll('#glinks path').forEach(p => p.classList.toggle('hl', !!id && (p.dataset.from === id || p.dataset.to === id))); }
+
+/* =========================================================================
+   EVENTS
+   ========================================================================= */
+function bind(){
+  const wrap = $('#gwrap');
+  wrap.addEventListener('click', e => {
+    const tg = e.target.closest('[data-toggle]');
+    if (tg) { const id = tg.dataset.toggle; UI.collapsed.has(id) ? UI.collapsed.delete(id) : UI.collapsed.add(id); render({}); return; }
+    const ms = e.target.closest('[data-pend]'); if (ms) { openPanel(ms.dataset.pend); return; }
+    const row = e.target.closest('.grow'); if (row) openPanel(row.dataset.id);
+  });
+  if (!isTouch) {
+    wrap.addEventListener('mouseover', e => { const b = e.target.closest('[data-bar],[data-pend]'); if (!b) return; const n = nodeById(b.dataset.bar || b.dataset.pend); if (n) showTip(n, e); });
+    wrap.addEventListener('mousemove', e => { if (tip.classList.contains('show')) moveTip(e); });
+    wrap.addEventListener('mouseout', e => { const b = e.target.closest('[data-bar],[data-pend]'); if (b && !b.contains(e.relatedTarget)) hideTip(); });
+  }
+  wrap.addEventListener('scroll', hideTip, { passive: true });
+  $('#panel').addEventListener('click', e => { if (e.target.closest('#pClose')) return closePanel(); const o = e.target.closest('[data-open]'); if (o) { openPanel(o.dataset.open); const r = document.querySelector(`.grow[data-id="${CSS.escape(o.dataset.open)}"]`); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); } });
+  $('#scrim').addEventListener('click', closePanel);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanel(); if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $('#q').focus(); } });
+  $('#pending').addEventListener('click', e => { const c = e.target.closest('[data-pcard]'); if (c) openPanel(c.dataset.pcard); });
+
+  let qt; $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { UI.q = e.target.value.trim().toLowerCase(); render({ animate: true, fx: true }); }, 180); });
+  $('#zoomSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; UI.zoom = b.dataset.z; saveUI(); syncZoomBtns(); render({ animate: true, fx: true, keepCenter: true }); });
+  $('#todayBtn').addEventListener('click', () => scrollToDay(TODAY, true));
+  $('#expandBtn').addEventListener('click', () => { UI.collapsed.clear(); render({ animate: true }); });
+  $('#collapseBtn').addEventListener('click', () => { M.acts.forEach(a => UI.collapsed.add(a.id)); render({ animate: true }); });
+  $('#filtersBtn').addEventListener('click', () => $('#filtersRow').classList.toggle('open'));
+  $('#statusChips').addEventListener('click', e => { const c = e.target.closest('[data-st]'); if (!c) return; const k = c.dataset.st; UI.statuses.has(k) ? UI.statuses.delete(k) : UI.statuses.add(k); c.classList.toggle('on'); render({ animate: true, fx: true }); });
+  $('#kpis').addEventListener('click', e => { const k = e.target.closest('[data-f]'); if (!k) return; const f = k.dataset.f;
+    if (UI.statuses.size === 1 && UI.statuses.has(f)) UI.statuses.clear(); else { UI.statuses.clear(); UI.statuses.add(f); } fillFilters(); render({ animate: true, fx: true }); });
+  $('#phases').addEventListener('click', e => { const p = e.target.closest('[data-phase]'); if (!p) return; UI.phase = UI.phase === p.dataset.phase ? '' : p.dataset.phase; fillFilters(); render({ animate: true, fx: true }); });
+  [['#fPhase', 'phase'], ['#fAct', 'act'], ['#fOffice', 'office'], ['#fPerson', 'person']].forEach(([s, k]) => $(s).addEventListener('change', e => { UI[k] = e.target.value; render({ animate: true, fx: true }); }));
+  $('#fFrom').addEventListener('change', e => { UI.from = dn(e.target.value); render({ animate: true, fx: true, scrollTo: UI.from != null ? null : 'today' }); if (UI.from != null) $('#gwrap').scrollLeft = 0; });
+  $('#fTo').addEventListener('change', e => { UI.to = dn(e.target.value); render({ animate: true, fx: true }); });
+  $('#clearBtn').addEventListener('click', () => { Object.assign(UI, { q: '', phase: '', act: '', office: '', person: '', from: null, to: null }); UI.statuses.clear();
+    $('#q').value = ''; $('#fFrom').value = ''; $('#fTo').value = ''; fillFilters(); render({ animate: true, fx: true, scrollTo: 'today' }); });
+  $('#tProj').checked = UI.showProj; $('#tLinks').checked = UI.showLinks;
+  $('#tProj').addEventListener('change', e => { UI.showProj = e.target.checked; saveUI(); render({ animate: true, fx: true, keepCenter: true }); });
+  $('#tLinks').addEventListener('change', e => { UI.showLinks = e.target.checked; saveUI(); render({}); });
+  $('#refreshBtn').addEventListener('click', () => { if (API) loadData(true); else toast('Demo mode — connect your Apps Script URL to refresh live data.'); });
+  let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => render({ keepCenter: true }), 150); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && API) poll(true); });
+}
+function syncZoomBtns(){ document.querySelectorAll('#zoomSeg button').forEach(b => b.classList.toggle('on', b.dataset.z === UI.zoom)); }
+let toastT; function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3200); }
+
+/* =========================================================================
+   DATA LOADING + NEAR-REAL-TIME SYNC
+   1. GET ?action=version every POLL_SECONDS (tiny payload, MD5 of the sheet)
+   2. if version changed -> GET ?action=data and re-render in place
+   Falls back to JSONP automatically if the browser blocks the fetch.
+   ========================================================================= */
+let useJsonp = false, jsonpN = 0, pollTimer = null, failCount = 0;
+function apiUrl(action){ return API + (API.includes('?') ? '&' : '?') + 'action=' + action + '&_=' + Date.now(); }
+function jsonp(url){
+  return new Promise((res, rej) => { const cb = '__gantt' + (++jsonpN); const s = document.createElement('script'); let done = false;
+    const t = setTimeout(() => { if (!done) { cleanup(); rej(new Error('JSONP timeout')); } }, 20000);
+    const cleanup = () => { done = true; clearTimeout(t); delete window[cb]; s.remove(); };
+    window[cb] = d => { cleanup(); res(d); }; s.onerror = () => { cleanup(); rej(new Error('Network error')); };
+    s.src = url + '&callback=' + cb; document.head.appendChild(s); });
+}
+async function apiGet(action){
+  const url = apiUrl(action);
+  if (!useJsonp) {
+    try { const r = await fetch(url, { cache: 'no-store', redirect: 'follow' }); if (!r.ok) throw new Error('HTTP ' + r.status); const j = await r.json(); return j; }
+    catch (e) { if (!(e instanceof TypeError)) throw e; const j = await jsonp(url); useJsonp = true; return j; }
+  }
+  return jsonp(url);
+}
+function setSync(state, text){
+  syncState = state; const dot = $('#syncDot'); dot.className = 'dot' + (state === 'live' ? '' : state === 'demo' ? ' demo' : state === 'error' ? ' err' : ' warn');
+  if (text) $('#syncText').textContent = text;
+}
+function timeAgo(t){ const s = Math.round((Date.now() - t) / 1000); if (s < 5) return 'just now'; if (s < 60) return s + 's ago'; const m = Math.round(s / 60); if (m < 60) return m + ' min ago'; const h = Math.round(m / 60); return h < 24 ? h + ' h ago' : Math.round(h / 24) + ' d ago'; }
+const clock = d => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function tickClock(){
+  if (syncState === 'live' && LAST_SYNC) $('#syncText').textContent = `Live · last updated ${clock(LAST_SYNC)} (${timeAgo(LAST_SYNC)})`;
+  if (CHANGED_AT) $('#changedPill').textContent = 'Sheet changed ' + timeAgo(CHANGED_AT.getTime());
+  // roll over "today" at midnight
+  const n = new Date(), t = Math.round(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) / DAY);
+  if (t !== TODAY) { TODAY = t; if (RAW) applyData(RAW, false); }
+}
+function signature(L){ return [L.title, L.sub, L.office, L.person, L.s, L.e, L.progress, L.disp, L.remarks].join('|'); }
+function applyData(raw, first){
+  RAW = raw;
+  const prevSig = SIG;
+  M = buildModel(raw);
+  if (raw.settings && raw.settings.DASHBOARD_TITLE) { $('#title').textContent = raw.settings.DASHBOARD_TITLE; document.title = raw.settings.DASHBOARD_TITLE + ' · Gantt'; }
+  if (raw.settings && raw.settings.DASHBOARD_SUBTITLE) $('#subtitle').textContent = raw.settings.DASHBOARD_SUBTITLE;
+  SIG = new Map(M.leaves.map(L => [L.id, signature(L)]));
+  const flash = new Set();
+  if (!first) { M.leaves.forEach(L => { if (prevSig.get(L.id) !== SIG.get(L.id)) { flash.add(L.id); } }); }
+  if (UI.act && !M.actMap.has(UI.act)) UI.act = '';
+  fillFilters();
+  render(first ? { animate: true, scrollTo: 'today', resetTop: true } : { flash });
+  if (UI.sel && $('#panel').classList.contains('show')) { if (nodeById(UI.sel)) openPanel(UI.sel); else closePanel(); }
+  if (!first && flash.size) toast(`Sheet updated — ${flash.size} task${flash.size === 1 ? '' : 's'} changed`);
+  $('#foot').textContent = API ? `Source: ${raw.spreadsheetName || 'Google Sheet'} · timezone ${raw.timezone || '—'} · version ${String(raw.version || '').slice(0, 8)}` : 'Demo snapshot of RR_Process_Kankarei.xlsx';
+}
+async function loadData(manual){
+  const btn = $('#refreshBtn'); btn.classList.add('spin');
+  try {
+    const d = await apiGet('data');
+    if (!d || d.ok === false) throw new Error(d && d.error ? d.error : 'Bad response');
+    const first = !RAW;
+    VERSION = d.version; LAST_SYNC = Date.now(); CHANGED_AT = d.changedAt ? new Date(d.changedAt) : null; failCount = 0;
+    setSync('live'); applyData(d, first); tickClock();
+    if (manual) toast('Data refreshed');
+  } catch (e) {
+    console.warn('[Gantt] load failed:', e); failCount++; setSync('error', 'Cannot reach the sheet — retrying…');
+    if (!RAW) { applyData(DEMO_DATA, true); $('#demoNote').style.display = 'block'; $('#demoNote').innerHTML = `Could not load live data (${esc(e.message)}). Showing the built-in snapshot. Check the web-app URL and that access is set to <b>Anyone</b>.`; }
+    if (manual) toast('Refresh failed: ' + e.message);
+  } finally { btn.classList.remove('spin'); }
+}
+async function poll(immediate){
+  clearTimeout(pollTimer);
+  if (!immediate && document.hidden) return schedule();
+  try {
+    const v = await apiGet('version');
+    if (!v || v.ok === false) throw new Error(v && v.error || 'Bad response');
+    if (v.version !== VERSION) await loadData(false);
+    else { LAST_SYNC = Date.now(); CHANGED_AT = v.changedAt ? new Date(v.changedAt) : CHANGED_AT; failCount = 0; setSync('live'); tickClock(); }
+  } catch (e) { failCount++; setSync(failCount > 2 ? 'error' : 'warn', failCount > 2 ? 'Offline — retrying…' : 'Reconnecting…'); }
+  schedule();
+}
+function schedule(){ const base = CONFIG.POLL_SECONDS * 1000; pollTimer = setTimeout(() => poll(false), failCount ? Math.min(60000, base * (1 + failCount)) : base); }
+
+/* =========================================================================
+   BOOT
+   ========================================================================= */
+(async function init(){
+  syncZoomBtns(); bind();
+  setInterval(tickClock, 1000);
+  if (!API) {
+    setSync('demo', 'Demo snapshot'); $('#changedPill').style.display = 'none'; $('#demoNote').style.display = 'block';
+    applyData(DEMO_DATA, true); return;
+  }
+  setSync('warn', 'Connecting to Google Sheet…');
+  await loadData(false);
+  schedule();
+})();
+</script>
+</body>
+</html>
