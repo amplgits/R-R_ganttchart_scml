@@ -507,7 +507,7 @@ function rel(n){
   if (x === 0) return 'due today';
   if (x === 1) return 'tomorrow';
   if (x > 0) return 'in ' + x + ' days';
-  return (-x) + (x === -1 ? ' day' : ' days') + ' overdue';
+  return (-x) + (x === -1 ? ' day' : ' days') + ' overdue · since ' + fmtD(n + 1);
 }
 const RM_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 /** "2026-11-09T12:44" -> "9 Nov 26, 12:44" */
@@ -1034,7 +1034,7 @@ function scrollToToday(smooth){
 }
 function dtCell(c, role){
   const st = cst(c);
-  if (c.k === 'date') { const n = dnum(c.d); return `<div class="dt ${st}">${fmtD(n)}<small>${esc(c.n || rel(n))}</small></div>`; }
+  if (c.k === 'date') { const n = dnum(c.d); return `<div class="dt ${st}">${fmtD(n)}<small>${n < TODAY ? `${TODAY - n}d overdue<br>since ${fmtShort(n + 1)}` : esc(c.n || rel(n))}</small></div>`; }
   const txt = { done: '✓ Completed', na: 'NA', after: (c.t || AFTER_LABEL).replace(/^After\s*/i, 'After '), progress: 'In process', blank: 'Not fixed', text: c.t }[c.k] || c.t;
   return `<div class="dt ${st === 'note' ? '' : st}">${esc(txt)}${c.k === 'progress' ? '<small>started</small>' : ''}</div>`;
 }
@@ -1047,7 +1047,7 @@ function trackShapes(L, showS, showA){
   const pts = [], afters = [], parts = [];
   items.forEach(({ r, c }) => {
     const name = r === 's' ? 'SCML' : 'AMPL';
-    if (c.k === 'date') { const n = dnum(c.d); pts.push({ r, n, px: x(n) + half, late: n < TODAY }); parts.push({ n, h: `<span class="p ${r}"><b>${name}</b> ${fmtShort(n)}${c.n ? ' (' + esc(c.n) + ')' : ''}</span>` }); return; }
+    if (c.k === 'date') { const n = dnum(c.d); pts.push({ r, n, px: x(n) + half, late: n < TODAY }); parts.push({ n, h: `<span class="p ${r}"><b>${name}</b> ${fmtShort(n)}${c.n ? ' (' + esc(c.n) + ')' : ''}${n < TODAY ? ` <span style="color:var(--late)">· ${TODAY - n}d overdue since ${fmtShort(n + 1)}</span>` : ''}</span>` }); return; }
     else if (c.k === 'after') { afters.push({ r, px: c.d ? x(dnum(c.d)) : W - 160, c }); }
     else if (c.k === 'done') parts.push(`<span class="p ${r}"><b>${name}</b> <span style="color:var(--done)">✓ Completed</span></span>`);
     else if (c.k === 'progress') parts.push(`<span class="p ${r}"><b>${name}</b> <span style="color:var(--prog)">in process</span></span>`);
@@ -1459,7 +1459,7 @@ function snapDraw(v, D, opt){
     ctx.font = `800 20px ${SNAP_FONT}`;
     const title = snapWrap(ctx, L.act.name, TW, 3);
     const tg = it.t.map(p => kind === 'over'
-      ? { r: p.r, txt: `${p.r} target ${fmtD(p.n)}${p.note ? ' (' + p.note + ')' : ''} — ${p.late} day${p.late === 1 ? '' : 's'} overdue` }
+      ? { r: p.r, txt: `${p.r} target ${fmtD(p.n)}${p.note ? ' (' + p.note + ')' : ''} — overdue since ${fmtD(p.n + 1)} · ${p.late} day${p.late === 1 ? '' : 's'}` }
       : { r: p.r, txt: `${p.r} target due ${p.n === TODAY ? 'today' : 'on ' + fmtD(p.n)}${p.note ? ' (' + p.note + ')' : ''}` });
     const other = kind === 'due' ? [['SCML', L.s], ['AMPL', L.a]].filter(([r]) => !it.t.some(p => p.r === r)).map(([r, c]) => r + ': ' + cellText(c)) : [];
     ctx.font = `600 15px ${SNAP_FONT}`;
