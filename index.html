@@ -877,7 +877,7 @@ function renderVillage(first){
   });
   const cs = $('#clearSt'); if (cs) cs.onclick = () => { UI.statuses.clear(); renderVillage(); };
   const ps = $('#phaseSeg'); if (ps) ps.querySelectorAll('button').forEach(b => b.onclick = () => { UI.phase = b.dataset.k === 'all' ? 'all' : Number(b.dataset.k); renderVillage(); });
-  $('#markSeg').querySelectorAll('button').forEach(b => b.onclick = () => { UI.marks = b.dataset.k; renderGantt(v); });
+  $('#markSeg').querySelectorAll('button').forEach(b => b.onclick = () => { UI.marks = b.dataset.k; $('#markSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderGantt(v); });
   $('#zoomSeg').querySelectorAll('button').forEach(b => b.onclick = () => { UI.zoom = b.dataset.k; $('#zoomSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderGantt(v, { scrollToday: true }); });
   $('#showNA').onchange = e => { UI.showNA = e.target.checked; if (!UI.showNA) UI.statuses.delete('na'); renderVillage(); };
   $('#onlyRm').onchange = e => { UI.onlyRm = e.target.checked; renderGantt(v); };
