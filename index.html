@@ -402,6 +402,36 @@ footer{color:var(--ink-3);font-size:12px;text-align:center;padding:10px 20px 30p
 .snap-zoom.show{display:block}
 .snap-zoom img{display:block;margin:0 auto;max-width:min(1080px,100%);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 
+/* ---------- overview: "Needs attention today" (overdue + due today, all villages) ---------- */
+.attn{margin-bottom:16px;border:2px solid #fecdd3;background:linear-gradient(180deg,#fff,#fff7f8);overflow:hidden}
+.attn.clear{border-color:#a7f3d0;background:linear-gradient(180deg,#fff,#f0fdf4)}
+.attn-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid #fde2e6}
+.attn.clear .attn-hd{border-bottom:0}
+.attn-hd .ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#e11d48,#f97316);font-weight:800;font-size:19px;flex:none}
+.attn.clear .attn-hd .ic{background:linear-gradient(135deg,#059669,#10b981)}
+.attn-hd h2{margin:0;font-size:17px;font-weight:800}
+.attn-hd p{margin:1px 0 0;font-size:12.5px;color:var(--ink-2);font-weight:600}
+.attn-hd .sp{flex:1}
+.attn-cols{display:grid;grid-template-columns:1fr 1fr}
+.attn-col + .attn-col{border-left:1px solid #fde2e6}
+.attn-col h3{margin:0;padding:11px 18px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.attn-col.o h3{color:#be123c;background:#fff1f2} .attn-col.t h3{color:#b45309;background:#fffbeb}
+.attn-col h3 b{color:#fff;border-radius:999px;padding:1px 8px;font-size:11.5px}
+.attn-col.o h3 b{background:var(--late)} .attn-col.t h3 b{background:var(--soon)}
+.attn-list{max-height:420px;overflow:auto}
+.attn-it{display:grid;grid-template-columns:34px minmax(0,1fr);gap:2px 10px;padding:10px 18px;border-top:1px solid var(--line-2);cursor:pointer}
+.attn-it:hover{background:#fdf4ff}
+.attn-it .sl{grid-row:1/span 4;width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-size:12.5px}
+.attn-col.o .sl{background:var(--late-bg);color:var(--late)} .attn-col.t .sl{background:var(--soon-bg);color:var(--soon)}
+.attn-it .vn{font-size:12px;font-weight:800;color:var(--ink-2)}
+.attn-it .vn span{font-weight:600;color:var(--ink-3)}
+.attn-it .an{font-weight:700;font-size:13px;line-height:1.3}
+.attn-it .tg{font-size:12px;font-weight:700;display:flex;flex-direction:column;gap:1px}
+.attn-it .tg .s{color:#be123c} .attn-it .tg .a{color:#c2410c} .attn-col.t .tg .s,.attn-col.t .tg .a{color:#b45309}
+.attn-it .rmk{font-size:11.5px;color:#9d174d;font-style:italic;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.attn-none{padding:18px;font-size:13px;font-weight:700;color:var(--done)}
+@media (max-width:760px){ .attn-cols{grid-template-columns:1fr} .attn-col + .attn-col{border-left:0;border-top:1px solid #fde2e6} }
+
 </style>
 </head>
 <body>
@@ -735,7 +765,7 @@ function renderOverview(){
   const persons = personsOf();
   const tile = (k, label, val, sub, color, click) =>
     `<div class="card kpi ${click ? 'click' : ''}" style="--kc:${color}" ${click ? `data-tab="${click}"` : ''}><div class="k-l">${label}</div><div class="k-v">${val}</div><div class="k-s">${sub}</div></div>`;
-  let h = `<div class="kpis">
+  let h = attentionHTML() + `<div class="kpis">
     ${tile('v', 'Villages', V.length, persons.length + ' responsible persons', '#4f46e5')}
     ${tile('a', 'Activity lines', app, DATA.activities.length + ' activities · ' + c.na + ' NA excluded', '#7c3aed')}
     ${tile('d', 'Completed', c.done, (app ? Math.round(c.done / app * 100) : 0) + '% of applicable', SCOLOR.done)}
@@ -781,6 +811,35 @@ function renderOverview(){
   });
   bindLineRows($('#vOverview'));
 }
+
+/** Overview banner: every OVERDUE target and every target DUE TODAY, all villages combined. */
+function attentionHTML(){
+  const O = [], T = [];
+  V.forEach(v => { const r = snapItems(v, TODAY); r.over.forEach(x => O.push(x)); r.due.forEach(x => T.push(x)); });
+  O.sort((a, b) => (b.scml - a.scml) || (b.max - a.max) || a.L.v.idx - b.L.v.idx || a.L.ai - b.L.ai);
+  T.sort((a, b) => a.L.v.idx - b.L.v.idx || a.L.ai - b.L.ai || a.L.ti - b.L.ti);
+  const nV = new Set(O.concat(T).map(x => x.L.v.key)).size;
+  const snapBtn = `<button class="btn" onclick="openSnap()">📷 Snapshot images</button>`;
+  if (!O.length && !T.length) {
+    return `<div class="card attn clear"><div class="attn-hd"><div class="ic">✓</div>
+      <div><h2>Nothing overdue and nothing due today</h2><p>${fmtLong(TODAY)} · all ${V.length} villages checked</p></div></div></div>`;
+  }
+  const item = (x, kind) => {
+    const L = x.L;
+    const tg = x.t.map(p => `<span class="${p.r === 'SCML' ? 's' : 'a'}">${p.r === 'SCML' ? '◆' : '●'} ${p.r} target ${fmtD(p.n)}${p.note ? ' (' + esc(p.note) + ')' : ''}${kind === 'o' ? ` — ${p.late} day${p.late === 1 ? '' : 's'} overdue · since ${fmtD(p.n + 1)}` : ' — due today'}</span>`).join('');
+    return `<div class="attn-it" data-line="${esc(L.id)}" data-tip="${esc(L.id)}"><div class="sl">${esc(L.act.sl)}</div>
+      <div class="vn">${esc(L.v.name)}${L.t.phase ? ' · ' + esc(L.t.phase) : ''} <span>· ${esc(L.v.person || 'not assigned')}</span></div>
+      <div class="an">${esc(L.act.name)}</div><div class="tg">${tg}</div>
+      ${L.rm.length ? `<div class="rmk">💬 “${esc(L.rm[0].text)}” — ${esc(L.rm[0].by || 'remark')}</div>` : ''}</div>`;
+  };
+  const col = (cls, title, list, none) => `<div class="attn-col ${cls}"><h3>${title} <b>${list.length}</b></h3>
+    <div class="attn-list">${list.length ? list.map(x => item(x, cls)).join('') : `<div class="attn-none">${none}</div>`}</div></div>`;
+  return `<div class="card attn"><div class="attn-hd"><div class="ic">!</div>
+      <div><h2>Needs attention today</h2><p>${fmtLong(TODAY)} · ${O.length} overdue · ${T.length} due today · ${nV} village${nV === 1 ? '' : 's'} · click an item for details</p></div>
+      <span class="sp"></span>${snapBtn}</div>
+    <div class="attn-cols">${col('o', 'Overdue', O, '✓ No overdue activity')}${col('t', 'Due today', T, '✓ Nothing due today')}</div></div>`;
+}
+
 function villageCard(v){
   const vl = linesOf(v.key), c = counts(vl), app = applicable(c);
   const hasDates = vl.some(L => L.s.k !== 'blank' || L.a.k !== 'blank');
