@@ -480,7 +480,7 @@ footer{color:var(--ink-3);font-size:12px;text-align:center;padding:10px 20px 30p
 <div class="snap-ov" id="snapOv">
   <div class="snap-box">
     <div class="snap-hd">
-      <div><h3>📷 Village snapshot</h3><p>One image per village with its <b>overdue</b> activities and the activities <b>due on the chosen day</b>. Download or share (e.g. WhatsApp).</p></div>
+      <div><h3>📷 Village snapshot</h3><p>One image with the <b>overdue</b> and <b>due-on-the-chosen-day</b> activities of all villages together. Download or share (e.g. WhatsApp).</p></div>
       <button class="x" id="snapClose" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
     <div class="snap-ctl">
@@ -489,7 +489,6 @@ footer{color:var(--ink-3);font-size:12px;text-align:center;padding:10px 20px 30p
       <label class="toggle"><input type="checkbox" id="snapOver" checked> Overdue</label>
       <label class="toggle"><input type="checkbox" id="snapToday" checked> Due on this day</label>
       <label class="toggle"><input type="checkbox" id="snapRemark" checked> Latest remark</label>
-      <label class="toggle"><input type="checkbox" id="snapEmpty"> Include villages with nothing to report</label>
       <span class="grow"></span>
       <button class="btn" id="snapShareAll" hidden>Share all</button>
       <button class="btn primary" id="snapDlAll">Download all</button>
@@ -1615,10 +1614,123 @@ function snapDraw(v, D, opt){
   return { v, over, due, url: cv.toDataURL('image/png'), file: `Snapshot_${v.name.replace(/[^A-Za-z0-9]+/g, '_')}_${iso}.png`, canvas: cv };
 }
 
+/* ---------- COMBINED snapshot: ONE image with every overdue + due-on-day activity (village shown on each card) ---------- */
+function snapDrawAll(list, D, opt){
+  const { W } = SNAP, P = 44, CW = W - 2 * P, PAD = 18, BADGE = 46;
+  const TX = P + 6 + PAD + BADGE, TW = CW - 6 - 2 * PAD - BADGE;
+  const over = [], due = [];
+  list.forEach(v => { const r = snapItems(v, D); r.over.forEach(x => over.push(x)); r.due.forEach(x => due.push(x)); });
+  over.sort((a, b) => (b.scml - a.scml) || (b.max - a.max) || a.L.v.idx - b.L.v.idx || a.L.ai - b.L.ai || a.L.ti - b.L.ti);
+  due.sort((a, b) => a.L.v.idx - b.L.v.idx || a.L.ai - b.L.ai || a.L.ti - b.L.ti);
+  const single = list.length === 1;
+  const nVil = new Set(over.concat(due).map(x => x.L.v.key)).size;
+  const cv = document.createElement('canvas'), ctx = cv.getContext('2d');
+
+  // ---------- 1. measure every card
+  const prep = (it, kind) => {
+    const L = it.L;
+    ctx.font = `800 20px ${SNAP_FONT}`;
+    const title = snapWrap(ctx, L.act.name, TW, 3);
+    const tg = it.t.map(p => kind === 'over'
+      ? { r: p.r, txt: `${p.r} target ${fmtD(p.n)}${p.note ? ' (' + p.note + ')' : ''} — ${p.late} day${p.late === 1 ? '' : 's'} overdue · since ${fmtD(p.n + 1)}` }
+      : { r: p.r, txt: `${p.r} target due ${p.n === TODAY ? 'today' : 'on ' + fmtD(p.n)}${p.note ? ' (' + p.note + ')' : ''}` });
+    const other = kind === 'due' ? [['SCML', L.s], ['AMPL', L.a]].filter(([r]) => !it.t.some(p => p.r === r)).map(([r, c]) => r + ': ' + cellText(c)) : [];
+    ctx.font = `800 16px ${SNAP_FONT}`;
+    const vil = snapWrap(ctx, L.v.name + (L.t.phase ? ' · ' + L.t.phase : '') + '   ·   ' + (L.v.person || 'not assigned'), TW, 1);
+    ctx.font = `600 15px ${SNAP_FONT}`;
+    const meta = snapWrap(ctx, other.join('  ·  '), TW, 2).filter(Boolean);
+    let rm = [];
+    if (opt.remark && L.rm.length) { ctx.font = `italic 500 15px ${SNAP_FONT}`; rm = snapWrap(ctx, '“' + L.rm[0].text + '” — ' + (L.rm[0].by || 'remark') + ', ' + fmtAt(L.rm[0].at).replace(/<[^>]+>/g, ''), TW, 2); }
+    const h = PAD + 26 + title.length * 27 + 8 + tg.length * 30 + (meta.length ? 4 + meta.length * 21 : 0) + (rm.length ? 8 + rm.length * 21 : 0) + PAD - 4;
+    return { L, vil: vil[0], title, tg, meta, rm, h, kind };
+  };
+  const sections = [];
+  if (opt.over) sections.push({ key: 'over', label: 'OVERDUE', col: '#e11d48', bg: '#fff1f2', cards: over.map(i => prep(i, 'over')), none: 'No overdue activity  ✓' });
+  if (opt.today) sections.push({ key: 'due', label: D === TODAY ? 'DUE TODAY' : 'DUE ON ' + fmtD(D).toUpperCase(), col: '#d97706', bg: '#fffbeb', cards: due.map(i => prep(i, 'due')), none: 'Nothing due on this day' });
+
+  const HEAD = 200, KPI = 84, FOOT = 64;
+  let H = HEAD + KPI;
+  sections.forEach(s => { H += 58 + (s.cards.length ? s.cards.reduce((a, c) => a + c.h + 12, 0) : 70) + 14; });
+  H += FOOT;
+
+  // ---------- 2. draw  (scale down only if the image would be extremely tall)
+  const S = Math.max(1, Math.min(SNAP.S, 15000 / H));
+  cv.width = Math.round(W * S); cv.height = Math.round(H * S); ctx.scale(S, S);
+  ctx.fillStyle = '#f3f5fb'; ctx.fillRect(0, 0, W, H);
+
+  const g = ctx.createLinearGradient(0, 0, W, HEAD);
+  g.addColorStop(0, '#4f46e5'); g.addColorStop(.5, '#7c3aed'); g.addColorStop(1, '#db2777');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, HEAD);
+  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = `800 15px ${SNAP_FONT}`;
+  ctx.fillText(((DATA.settings && DATA.settings.DASHBOARD_TITLE) || 'Physical Possession of Private Land').toUpperCase() + '  ·  DAILY SNAPSHOT', P, 52);
+  ctx.fillStyle = '#fff'; ctx.font = `800 46px ${SNAP_FONT}`; ctx.fillText(single ? list[0].name : 'Overdue & Due Today', P, 110);
+  ctx.font = `700 19px ${SNAP_FONT}`; ctx.fillStyle = 'rgba(255,255,255,.95)';
+  ctx.fillText(single ? 'Responsible: ' + (list[0].person || 'not assigned') : 'All villages combined  ·  ' + list.length + ' villages', P, 148);
+  ctx.font = `600 17px ${SNAP_FONT}`; ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.fillText('As on ' + fmtLong(D), P, 178);
+
+  let y = HEAD + 22, x = P;
+  x += snapPill(ctx, x, y, over.length + ' overdue', '#9f1239', '#ffe4e6', 17) + 10;
+  x += snapPill(ctx, x, y, due.length + (D === TODAY ? ' due today' : ' due on ' + fmtD(D)), '#92400e', '#fef3c7', 17) + 10;
+  if (!single) snapPill(ctx, x, y, nVil + ' village' + (nVil === 1 ? '' : 's') + ' affected', '#3730a3', '#e0e7ff', 17);
+  y = HEAD + KPI;
+
+  sections.forEach(s => {
+    ctx.fillStyle = s.col; snapRR(ctx, P, y + 14, 6, 26, 3); ctx.fill();
+    ctx.font = `800 21px ${SNAP_FONT}`; ctx.fillStyle = '#1e1b4b'; ctx.fillText(s.label, P + 18, y + 35);
+    const lw = ctx.measureText(s.label).width;
+    snapPill(ctx, P + 30 + lw, y + 13, String(s.cards.length), '#fff', s.col, 15);
+    y += 58;
+    if (!s.cards.length) {
+      ctx.fillStyle = '#fff'; snapRR(ctx, P, y, CW, 56, 14); ctx.fill();
+      ctx.strokeStyle = '#e7eaf3'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = s.key === 'over' ? '#059669' : '#64748b'; ctx.font = `700 18px ${SNAP_FONT}`; ctx.fillText(s.none, P + 22, y + 35);
+      y += 70 + 14; return;
+    }
+    s.cards.forEach(cd => {
+      const L = cd.L;
+      ctx.save(); ctx.shadowColor = 'rgba(30,27,75,.08)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 3;
+      ctx.fillStyle = '#fff'; snapRR(ctx, P, y, CW, cd.h, 14); ctx.fill(); ctx.restore();
+      ctx.strokeStyle = '#e7eaf3'; ctx.lineWidth = 1; snapRR(ctx, P, y, CW, cd.h, 14); ctx.stroke();
+      ctx.save(); snapRR(ctx, P, y, CW, cd.h, 14); ctx.clip(); ctx.fillStyle = s.col; ctx.fillRect(P, y, 6, cd.h); ctx.restore();
+      ctx.fillStyle = s.bg; snapRR(ctx, P + 6 + PAD, y + PAD, 36, 36, 10); ctx.fill();
+      ctx.fillStyle = s.col; ctx.font = `800 17px ${SNAP_FONT}`; ctx.textAlign = 'center'; ctx.fillText(L.act.sl, P + 6 + PAD + 18, y + PAD + 24); ctx.textAlign = 'left';
+      let ty = y + PAD + 14;
+      ctx.fillStyle = '#4338ca'; ctx.font = `800 16px ${SNAP_FONT}`; ctx.fillText(cd.vil, TX, ty);          // village · phase · responsible
+      ty += 26;
+      ctx.fillStyle = '#1e1b4b'; ctx.font = `800 20px ${SNAP_FONT}`;
+      cd.title.forEach(t => { ctx.fillText(t, TX, ty); ty += 27; });
+      ty += 2;
+      cd.tg.forEach(t => {
+        const isS = t.r === 'SCML';
+        ctx.fillStyle = isS ? '#db2777' : '#0284c7';
+        if (isS) { ctx.save(); ctx.translate(TX + 7, ty + 7); ctx.rotate(Math.PI / 4); ctx.fillRect(-5.5, -5.5, 11, 11); ctx.restore(); }
+        else { ctx.beginPath(); ctx.arc(TX + 7, ty + 7, 6, 0, Math.PI * 2); ctx.fill(); }
+        ctx.font = `700 17px ${SNAP_FONT}`; ctx.fillStyle = cd.kind === 'over' ? (isS ? '#be123c' : '#c2410c') : '#92400e';
+        ctx.fillText(t.txt, TX + 22, ty + 13); ty += 30;
+      });
+      if (cd.meta.length) { ty += 4; ctx.font = `600 15px ${SNAP_FONT}`; ctx.fillStyle = '#64748b'; cd.meta.forEach(m => { ctx.fillText(m, TX, ty + 10); ty += 21; }); }
+      if (cd.rm.length) { ty += 8; ctx.font = `italic 500 15px ${SNAP_FONT}`; ctx.fillStyle = '#9d174d'; cd.rm.forEach(m => { ctx.fillText(m, TX, ty + 10); ty += 21; }); }
+      y += cd.h + 12;
+    });
+    y += 14;
+  });
+
+  ctx.fillStyle = '#e7eaf3'; ctx.fillRect(P, H - FOOT + 6, CW, 1);
+  ctx.font = `600 13.5px ${SNAP_FONT}`; ctx.fillStyle = '#94a3b8';
+  const now = new Date();
+  ctx.fillText('◆ SCML target   ● AMPL target   ·   Generated ' + now.getDate() + ' ' + MON[now.getMonth()] + ' ' + now.getFullYear() + ', ' + String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') +
+    '   ·   ' + (usingDemo ? 'Demo snapshot' : (DATA.spreadsheetName || 'Google Sheet')), P, H - 24);
+
+  const iso = dobj(D).toISOString().slice(0, 10);
+  return { v: single ? list[0] : { name: 'All villages' }, over, due, nVil, url: cv.toDataURL('image/png'),
+           file: `Snapshot_${single ? list[0].name.replace(/[^A-Za-z0-9]+/g, '_') : 'All_villages'}_${iso}.png`, canvas: cv };
+}
+
 /* ---------- snapshot window ---------- */
 function openSnap(){
   const sel = $('#snapVillage');
-  sel.innerHTML = `<option value="">All villages (one image each)</option>` + V.map(v => `<option value="${esc(v.key)}">${esc(v.name)} — ${esc(v.person || '')}</option>`).join('');
+  sel.innerHTML = `<option value="">All villages — one combined image</option>` + V.map(v => `<option value="${esc(v.key)}">${esc(v.name)} — ${esc(v.person || '')}</option>`).join('');
   sel.value = UI.view === 'village' ? UI.vkey : '';
   $('#snapDate').value = dobj(TODAY).toISOString().slice(0, 10);
   $('#snapOv').classList.add('show');
@@ -1633,25 +1745,21 @@ async function snapBuild(){
   const D = dnum($('#snapDate').value) ?? TODAY;
   const opt = { over: $('#snapOver').checked, today: $('#snapToday').checked, remark: $('#snapRemark').checked };
   if (!opt.over && !opt.today) { grid.innerHTML = '<div class="empty">Tick <b>Overdue</b> and/or <b>Due on this day</b>.</div>'; info.textContent = ''; SNAP.imgs = []; return; }
-  const key = $('#snapVillage').value, all = !key;
-  const list = all ? V : V.filter(v => v.key === key);
-  const made = list.map(v => snapDraw(v, D, opt));
-  const shown = all && !$('#snapEmpty').checked ? made.filter(m => (opt.over && m.over.length) || (opt.today && m.due.length)) : made;
-  SNAP.imgs = shown;
-  const skipped = made.length - shown.length;
-  const tOver = made.reduce((s, m) => s + m.over.length, 0), tDue = made.reduce((s, m) => s + m.due.length, 0);
-  info.innerHTML = `As on <b>${fmtLong(D)}</b>: <b style="color:var(--late)">${tOver} overdue</b> and <b style="color:var(--soon)">${tDue} due ${D === TODAY ? 'today' : 'that day'}</b> across ${made.length} village${made.length === 1 ? '' : 's'}.` +
-    (skipped ? ` ${skipped} village${skipped === 1 ? '' : 's'} with nothing to report ${skipped === 1 ? 'is' : 'are'} hidden — tick “Include villages with nothing to report” to get ${skipped === 1 ? 'its image' : 'their images'} too.` : '') +
+  const key = $('#snapVillage').value;
+  const list = key ? V.filter(v => v.key === key) : V;
+  const m = snapDrawAll(list, D, opt);                 // ONE image for the whole selection
+  SNAP.imgs = [m];
+  info.innerHTML = `As on <b>${fmtLong(D)}</b>: <b style="color:var(--late)">${m.over.length} overdue</b> and <b style="color:var(--soon)">${m.due.length} due ${D === TODAY ? 'today' : 'that day'}</b> in ${key ? esc(list[0].name) : m.nVil + ' of ' + list.length + ' villages'}.` +
     (usingDemo ? ' <i>(demo data)</i>' : '');
   const canShare = !!(navigator.canShare && navigator.share);
-  $('#snapShareAll').hidden = !canShare || !shown.length;
-  $('#snapDlAll').disabled = !shown.length;
-  grid.innerHTML = shown.length ? shown.map((m, i) => `<figure class="snap-fig"><img src="${m.url}" alt="${esc(m.v.name)} snapshot" data-i="${i}">
+  $('#snapShareAll').hidden = true;
+  $('#snapDlAll').textContent = 'Download image';
+  $('#snapDlAll').disabled = false;
+  grid.innerHTML = `<figure class="snap-fig" style="grid-column:1/-1;max-width:600px;margin:0 auto"><img src="${m.url}" alt="Snapshot" data-i="0">
       <figcaption><b>${esc(m.v.name)}</b><span class="sp"></span>${chip('late', m.over.length + ' overdue')}${chip('soon', m.due.length + ' due')}
-      <button class="btn" data-dl="${i}">Download</button>${canShare ? `<button class="btn" data-sh="${i}">Share</button>` : ''}</figcaption></figure>`).join('')
-    : '<div class="empty">Nothing overdue or due on this day in any village. 🎉</div>';
-  grid.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => snapDownload(SNAP.imgs[+b.dataset.dl]));
-  grid.querySelectorAll('[data-sh]').forEach(b => b.onclick = () => snapShare([SNAP.imgs[+b.dataset.sh]]));
+      <button class="btn" data-dl="0">Download</button>${canShare ? `<button class="btn" data-sh="0">Share</button>` : ''}</figcaption></figure>`;
+  grid.querySelectorAll('[data-dl]').forEach(b => b.onclick = () => snapDownload(SNAP.imgs[0]));
+  grid.querySelectorAll('[data-sh]').forEach(b => b.onclick = () => snapShare([SNAP.imgs[0]]));
   grid.querySelectorAll('img[data-i]').forEach(im => im.onclick = () => { $('#snapZoomImg').src = im.src; $('#snapZoom').classList.add('show'); });
 }
 function snapDownload(m){ const a = document.createElement('a'); a.href = m.url; a.download = m.file; document.body.appendChild(a); a.click(); a.remove(); }
@@ -1666,7 +1774,7 @@ $('#snapBtn').onclick = () => { if (!DATA) return toast('Data is still loading�
 $('#snapClose').onclick = closeSnap;
 $('#snapOv').onclick = e => { if (e.target.id === 'snapOv') closeSnap(); };
 $('#snapZoom').onclick = () => $('#snapZoom').classList.remove('show');
-['snapVillage', 'snapDate', 'snapOver', 'snapToday', 'snapRemark', 'snapEmpty'].forEach(id => $('#' + id).onchange = snapBuild);
+['snapVillage', 'snapDate', 'snapOver', 'snapToday', 'snapRemark'].forEach(id => $('#' + id).onchange = snapBuild);
 $('#snapDlAll').onclick = () => SNAP.imgs.forEach((m, i) => setTimeout(() => snapDownload(m), i * 400));
 $('#snapShareAll').onclick = () => snapShare(SNAP.imgs);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#snapOv').classList.contains('show')) closeSnap(); });
